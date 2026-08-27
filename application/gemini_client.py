@@ -16,7 +16,7 @@ class GeminiClient:
             raise ValueError("GEMINI_API_KEY is not set")
 
         self.client = genai.Client(api_key=api_key)
-        self.model = "gemini-3.7-flash"
+        self.model = "gemini-3.6-flash"
 
     def generate_response(self, prompt):
         """Send a prompt to Gemini and return the text response."""

@@ -51,7 +51,7 @@ const getCurrentLocation = () => {
             sender: "assistant",
           },
         ]);
-
+//تعبت
         setPendingLocationMessage("");
         setLocationRequest(false);
       } catch (error) {

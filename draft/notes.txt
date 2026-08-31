@@ -4,4 +4,9 @@ Instead of connecting Gemini with MCP servers directly
 and business logic, we use an application layer that coordinates 
 the messages between the two entites to be more secured and seperate in which
 if we want to change an entity without changing the others
->
+
+
+Run the code via: uvicorn main:app --reload (it goes to main.py then app and finally run the fastAPI)
+maltbot: cd frontend -> npm run dev
+
+python -m database.test 

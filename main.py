@@ -1,15 +1,13 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from application.assistant import Assistant
-from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(
-    title="Al-Musaid 2.0 API",
-    description="Backend API for the Al-Musaid banking assistant",
-    version="1.0.0",
-)
+app = FastAPI()
 
+
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,21 +17,45 @@ app.add_middleware(
 )
 
 
-class ChatRequest(BaseModel):
-    message: str
-
-
-class ChatResponse(BaseModel):
-    success: bool
-    response: str
-
-
+# Assistant
 assistant = Assistant()
 
 
-@app.post("/chat", response_model=ChatResponse)
+# Request model
+class ChatRequest(BaseModel):
+
+    message: str
+
+    latitude: float | None = None
+
+    longitude: float | None = None
+
+    location_error: str | None = None
+
+
+# Response model
+class ChatResponse(BaseModel):
+
+    success: bool
+
+    action: str
+
+    response: str
+
+    location_type: str | None = None
+
+
+# Chat endpoint
+@app.post("/chat")
 async def chat(request: ChatRequest):
 
-    result = await assistant.process_message(request.message)
+    print("CHAT REQUEST:", request.model_dump())
+
+    result = await assistant.process_message(
+        user_message=request.message,
+        latitude=request.latitude,
+        longitude=request.longitude,
+        location_error=request.location_error,
+    )
 
     return result

@@ -10,44 +10,130 @@ class Assistant:
         self.gemini = GeminiClient()
         self.mcp_client = MCPClientManager()
 
-    async def process_message(self, user_message):
+    async def process_message(
+        self, user_message, latitude=None, longitude=None, location_error=None
+    ):
         """Process a user message using Gemini and MCP tools."""
 
-        # Discover all available MCP tools.
         tools = []
 
         for server_name in self.mcp_client.server_modules:
             server_tools = await self.mcp_client.list_server_tools(server_name)
             tools.extend(server_tools)
 
-        # Ask Gemini what action should be taken.
-        decision = self.gemini.decide_action(user_message, tools)
+        decision = self.gemini.decide_action(
+            user_message=user_message,
+            tools=tools,
+            latitude=latitude,
+            longitude=longitude,
+            location_error=location_error,
+        )
 
         decision_data = json.loads(decision)
 
-        # If Gemini wants to call an MCP tool.
-        if decision_data["action"] == "tool":
+        print("GEMINI DECISION DATA:", decision_data)
 
-            tool_name = decision_data["tool_name"]
-            arguments = decision_data.get("arguments", {})
+        action = decision_data.get("action")
 
-            # Call the selected MCP tool.
-            tool_result = await self.mcp_client.call_tool(tool_name, arguments)
+        if action == "location_required":
 
-            # Give the tool result back to Gemini
-            # so it can generate the final response.
-            final_response = self.gemini.generate_tool_response(
-                user_message, tool_name, tool_result
+            return {
+                "success": True,
+                "action": "location_required",
+                "location_type": decision_data.get("location_type", "unknown"),
+                "response": None,
+            }
+
+        # --------------------------------------------------
+        # Multiple MCP tools
+        # --------------------------------------------------
+
+        if action == "tools":
+
+            selected_tools = decision_data.get("tools", [])
+
+            tool_results = []
+
+            for selected_tool in selected_tools:
+
+                tool_name = selected_tool.get("tool_name")
+
+                arguments = selected_tool.get("arguments", {})
+
+                if latitude is not None and longitude is not None:
+                    arguments["latitude"] = latitude
+                    arguments["longitude"] = longitude
+
+                print("MCP TOOL:", tool_name)
+                print("MCP ARGUMENTS:", arguments)
+
+                tool_result = await self.mcp_client.call_tool(tool_name, arguments)
+
+                print("MCP RESULT:", tool_result)
+
+                tool_results.append(
+                    {
+                        "tool_name": tool_name,
+                        "result": tool_result,
+                    }
+                )
+
+            final_response = self.gemini.generate_tools_response(
+                user_message,
+                tool_results,
+                location_error=location_error,
             )
 
-            return {"success": True, "response": final_response}
+            return {
+                "success": True,
+                "response": final_response,
+            }
 
-        # If Gemini can answer without using an MCP tool.
-        elif decision_data["action"] == "response":
+        # --------------------------------------------------
+        # Single MCP tool
+        # --------------------------------------------------
 
-            return {"success": True, "response": decision_data["response"]}
+        if action == "tool":
 
-        # Handle an unexpected action.
-        else:
+            tool_name = decision_data.get("tool_name")
 
-            return {"success": False, "error": "Unknown Gemini action"}
+            arguments = decision_data.get("arguments", {})
+
+            if latitude is not None and longitude is not None:
+                arguments["latitude"] = latitude
+                arguments["longitude"] = longitude
+
+            print("MCP TOOL:", tool_name)
+            print("MCP ARGUMENTS:", arguments)
+
+            tool_result = await self.mcp_client.call_tool(tool_name, arguments)
+
+            print("MCP RESULT:", tool_result)
+
+            final_response = self.gemini.generate_tool_response(
+                user_message,
+                tool_name,
+                tool_result,
+                location_error=location_error,
+            )
+
+            return {
+                "success": True,
+                "response": final_response,
+            }
+
+        # --------------------------------------------------
+        # Direct response
+        # --------------------------------------------------
+
+        if action == "response":
+
+            return {
+                "success": True,
+                "response": decision_data.get("response", ""),
+            }
+
+        return {
+            "success": False,
+            "response": "عذرًا، حدث خطأ أثناء معالجة طلبك.",
+        }

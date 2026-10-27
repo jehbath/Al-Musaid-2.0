@@ -106,33 +106,52 @@ function App() {
 
   /* ---------------- VOICE ---------------- */
 
-  const startListening = () => {
-    if (!SpeechRecognition) {
-      setError("المتصفح لا يدعم التعرف على الصوت.");
-      return;
+ 
+const startListening = () => {
+  if (!SpeechRecognition) {
+    setError("المتصفح لا يدعم التعرف على الصوت.");
+    return;
+  }
+
+  setError("");
+
+  const recognition = new SpeechRecognition();
+
+  recognition.lang = "ar-SA";
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 3;
+
+  recognition.onstart = () => {
+    setIsListening(true);
+     setError("");
+  };
+
+  recognition.onresult = (event) => {
+    let transcript = "";
+
+    for (let i = 0; i < event.results.length; i++) {
+      transcript += event.results[i][0].transcript;
     }
 
-    const recognition = new SpeechRecognition();
-
-    recognition.lang = "ar-SA";
-    recognition.continuous = false;
-    recognition.interimResults = false;
-
-    recognition.onstart = () => setIsListening(true);
-
-    recognition.onresult = (event) => {
-      setMessage(event.results[0][0].transcript);
-    };
-
-    recognition.onerror = () => {
-      setError("تعذر التعرف على الصوت. حاول مرة أخرى.");
-      setIsListening(false);
-    };
-
-    recognition.onend = () => setIsListening(false);
-
-    recognition.start();
+    setMessage(transcript);
   };
+
+  recognition.onerror = () => {
+    setError("تعذر التعرف على الصوت. حاول مرة أخرى.");
+  };
+
+  recognition.onend = () => {
+    setIsListening(false);
+  };
+
+  try {
+    recognition.start();
+  } catch {
+    setIsListening(false);
+    setError("تعذر بدء التسجيل. حاول مرة أخرى.");
+  }
+};
 
   /* ---------------- MESSAGE ---------------- */
 

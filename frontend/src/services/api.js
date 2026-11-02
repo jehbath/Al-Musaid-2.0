@@ -1,11 +1,9 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-
 export async function sendMessage(
   message,
   location = {}
 ) {
-
   const response = await fetch(
     `${API_BASE_URL}/chat`,
     {
@@ -16,8 +14,10 @@ export async function sendMessage(
       },
 
       body: JSON.stringify({
-
         message,
+
+        conversation_id:
+          location?.conversation_id ?? null,
 
         latitude:
           location?.latitude ?? null,
@@ -27,24 +27,15 @@ export async function sendMessage(
 
         location_error:
           location?.location_error ?? null,
-
       }),
     }
   );
 
-
   if (!response.ok) {
-
-    throw new Error(
-      "تعذر الاتصال بالخادم"
-    );
-
+    throw new Error("تعذر الاتصال بالخادم");
   }
 
-
-  const data =
-    await response.json();
-
+  const data = await response.json();
 
   return data;
 }

@@ -5,6 +5,22 @@ and business logic, we use an application layer that coordinates
 the messages between the two entites to be more secured and seperate in which
 if we want to change an entity without changing the others
 
+RAG is used to let gemini searching in the document for a specific keywords
+and then generate a readable sentence to the user.
+
+Firstly, it reads from a document (Loading), then dividing the sentences into small chunks (Chunking), converting
+them into digital representation (Embedding) (Because if we compare the words, dialects or expression of the user 
+can differ from what is written in the document). In embedding process, it converts the text into units called tokens that 
+can be words or parts of words, then it processes those tokens into internal digital representations and then procesing them with neural
+network according to what it learns, finally it generates the final vector of numbers that represents the text in multidimensional mathematical 
+space.
+Then searching for the most related words with the user questions (Retrieval). The user question is also converted into digital representation
+and vector to enable the model to compare between the vectors and give the similarity percentage which is given by cosine similarity. 
+Cosine similarity is a mathematical standard that used to identify how two vectors are identical by calculating the cosine, if the 
+vectors are neat to each other, the angle between them is small and the percentage is near to 1, if they are orthognal 0, and if they are
+in the opposite direction, the result is -1.
+
+Finally it returns the related words to Gemini to generate a response 
 
 Run the code via: uvicorn main:app --reload (it goes to main.py then app and finally run the fastAPI)
 maltbot: cd frontend -> npm run dev

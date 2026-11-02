@@ -1,4 +1,5 @@
-1. Understand the RAG concept to enable gemini to answer unexpected messages 
+1. Understand the RAG concept to enable gemini to answer unexpected messages (Done)
+(قم باضافة تحسينات في الرد, فمثلا عوضا عن ان يقول استنادا الى المستندات التي لدي يقوم بصياغ رد يخبر العميل ان هذا خارج المستندات التي لديه)
 2. Context memory (remember what was in the conversation)
 3. user memory (previous chats and information suchas the user name and so on )
-4. Add sign in and query about the account
+4. Add sign in and query about the account+

@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal, InvalidOperation
 
 from application.gemini_client import GeminiClient
 from application.mcp_client import MCPClientManager
@@ -11,10 +12,207 @@ class Assistant:
     def __init__(self):
 
         self.gemini = GeminiClient()
-
         self.mcp_client = MCPClientManager()
-
         self.memory = ConversationMemory()
+
+    # --------------------------------------------------
+    # Helper: Execute hypothetical calculations
+    # --------------------------------------------------
+
+    def _execute_calculation(self, decision_data, conversation_state):
+
+        operation = decision_data.get("operation")
+        amount = decision_data.get("amount")
+        reference = decision_data.get("reference", "last_result")
+
+        # Select the reference amount
+        if reference == "account_balance":
+
+            account_balance = conversation_state.get("account_balance")
+
+            if not account_balance:
+                return {
+                    "success": False,
+                    "response": "لا يوجد رصيد محفوظ في هذه المحادثة. يرجى الاستعلام عن رصيدك أولاً.",
+                }
+
+            base_amount = account_balance.get("amount")
+            currency = account_balance.get("currency", "SAR")
+
+        elif reference == "calculation":
+
+            calculation = conversation_state.get("calculation")
+
+            if not calculation:
+                return {
+                    "success": False,
+                    "response": "لا توجد عملية حسابية سابقة يمكن الاعتماد عليها.",
+                }
+
+            base_amount = calculation.get("current_amount")
+            currency = calculation.get("currency", "SAR")
+
+        elif reference == "last_result":
+
+            calculation = conversation_state.get("calculation")
+
+            if calculation:
+
+                base_amount = calculation.get("current_amount")
+                currency = calculation.get("currency", "SAR")
+
+            else:
+
+                account_balance = conversation_state.get("account_balance")
+
+                if not account_balance:
+                    return {
+                        "success": False,
+                        "response": "لا يوجد مبلغ سابق يمكن إجراء العملية عليه. يرجى الاستعلام عن رصيدك أولاً.",
+                    }
+
+                base_amount = account_balance.get("amount")
+                currency = account_balance.get("currency", "SAR")
+
+        else:
+
+            return {
+                "success": False,
+                "response": "لم أتمكن من تحديد المبلغ الذي تريد إجراء العملية عليه.",
+            }
+
+        # Convert values safely
+        try:
+
+            base_amount = Decimal(str(base_amount))
+
+            if not base_amount.is_finite():
+                raise InvalidOperation
+
+            if operation != "show":
+
+                if amount is None:
+                    raise InvalidOperation
+
+                amount = Decimal(str(amount))
+
+                if not amount.is_finite():
+                    raise InvalidOperation
+
+        except (InvalidOperation, TypeError, ValueError):
+
+            return {
+                "success": False,
+                "response": "تعذر تحديد المبلغ بصورة صحيحة. يرجى توضيح العملية والمبلغ.",
+            }
+
+        # Execute the requested operation
+        try:
+
+            if operation == "subtract":
+
+                result = base_amount - amount
+
+            elif operation == "add":
+
+                result = base_amount + amount
+
+            elif operation == "multiply":
+
+                result = base_amount * amount
+
+            elif operation == "divide":
+
+                if amount == 0:
+
+                    return {
+                        "success": False,
+                        "response": "لا يمكن القسمة على صفر.",
+                    }
+
+                result = base_amount / amount
+
+            elif operation == "show":
+
+                result = base_amount
+
+            else:
+
+                return {
+                    "success": False,
+                    "response": "العملية الحسابية المطلوبة غير مدعومة.",
+                }
+
+        except (InvalidOperation, OverflowError):
+
+            return {
+                "success": False,
+                "response": "حدث خطأ أثناء تنفيذ العملية الحسابية.",
+            }
+
+        if not result.is_finite():
+
+            return {
+                "success": False,
+                "response": "نتيجة العملية غير صالحة.",
+            }
+
+        # Preserve the original base amount
+        previous_calculation = conversation_state.get("calculation", {})
+
+        if previous_calculation and reference != "account_balance":
+
+            original_base = previous_calculation.get(
+                "base_amount",
+                float(base_amount),
+            )
+
+        else:
+
+            original_base = float(base_amount)
+
+        # Build updated calculation state
+        updated_calculation = {
+            "base_amount": original_base,
+            "current_amount": float(result),
+            "currency": currency,
+            "last_operation": {
+                "type": operation,
+                "amount": float(amount) if amount is not None else None,
+            },
+        }
+
+        return {
+            "success": True,
+            "result": float(result),
+            "currency": currency,
+            "calculation": updated_calculation,
+        }
+
+    # --------------------------------------------------
+    # Helper: Format calculation response
+    # --------------------------------------------------
+
+    def _format_calculation_response(self, calculation_result):
+
+        if not calculation_result["success"]:
+
+            return calculation_result["response"]
+
+        result = calculation_result["result"]
+        currency = calculation_result["currency"]
+
+        # Format without unnecessary decimal zeros
+        formatted_result = f"{result:,.10f}".rstrip("0").rstrip(".")
+
+        return (
+            f"الناتج هو {formatted_result} {currency}."
+            "\n\nهذه عملية حسابية افتراضية، ولم يتم تغيير رصيد حسابك المصرفي."
+        )
+
+    # --------------------------------------------------
+    # Main message processing
+    # --------------------------------------------------
 
     async def process_message(
         self,
@@ -31,7 +229,36 @@ class Assistant:
             limit=10,
         )
 
-        # 2. Save newly received browser coordinates
+        # 2. Retrieve structured conversation state
+        conversation_state = self.memory.get_conversation_state(conversation_id)
+
+        print("CONVERSATION STATE:", conversation_state)
+
+        # 3. Add structured state to Gemini context
+        if conversation_state:
+
+            state_context = {
+                "role": "assistant",
+                "content": (
+                    "[STRUCTURED CONVERSATION STATE]\n"
+                    "The following data represents the saved state "
+                    "of the current conversation.\n"
+                    "Use it to understand references to previous "
+                    "calculations and values.\n"
+                    "Do not confuse hypothetical calculations "
+                    "with the real bank account balance.\n"
+                    "Do not invent or modify these values.\n\n"
+                    + json.dumps(
+                        conversation_state,
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                ),
+            }
+
+            conversation_history.append(state_context)
+
+        # 4. Save newly received browser coordinates
         if latitude is not None and longitude is not None:
 
             self.memory.save_location(
@@ -42,10 +269,10 @@ class Assistant:
 
             print("LOCATION SAVED:", latitude, longitude)
 
-        # 3. Retrieve previously saved location
+        # 5. Retrieve previously saved location
         saved_location = self.memory.get_saved_location(conversation_id)
 
-        # 4. Determine which coordinates to use
+        # 6. Determine which coordinates to use
         effective_latitude = latitude
         effective_longitude = longitude
 
@@ -65,7 +292,7 @@ class Assistant:
                 effective_longitude,
             )
 
-        # 5. Get available MCP tools
+        # 7. Get available MCP tools
         tools = []
 
         for server_name in self.mcp_client.server_modules:
@@ -74,7 +301,7 @@ class Assistant:
 
             tools.extend(server_tools)
 
-        # 6. Ask Gemini to decide what to do
+        # 8. Ask Gemini to decide what to do
         decision = self.gemini.decide_action(
             user_message=user_message,
             tools=tools,
@@ -90,7 +317,10 @@ class Assistant:
 
         action = decision_data.get("action")
 
-        # Location required
+        # --------------------------------------------------
+        # 9. Location required
+        # --------------------------------------------------
+
         if action == "location_required":
 
             return {
@@ -103,7 +333,45 @@ class Assistant:
                 "response": None,
             }
 
-        # Multiple MCP tools
+        # --------------------------------------------------
+        # 10. Hypothetical calculation
+        # --------------------------------------------------
+
+        if action == "calculation":
+
+            calculation_result = self._execute_calculation(
+                decision_data,
+                conversation_state,
+            )
+
+            if calculation_result["success"]:
+
+                # Save only the hypothetical calculation.
+                # Never modify the actual account balance.
+                self.memory.update_conversation_state(
+                    conversation_id,
+                    {"calculation": calculation_result["calculation"]},
+                )
+
+            final_response = self._format_calculation_response(calculation_result)
+
+            print("CALCULATION RESULT:", calculation_result)
+
+            self.memory.save_exchange(
+                conversation_id,
+                user_message,
+                final_response,
+            )
+
+            return {
+                "success": True,
+                "response": final_response,
+            }
+
+        # --------------------------------------------------
+        # 11. Multiple MCP tools
+        # --------------------------------------------------
+
         if action == "tools":
 
             selected_tools = decision_data.get("tools", [])
@@ -139,6 +407,26 @@ class Assistant:
                     }
                 )
 
+                # Save the real account balance if retrieved
+                if (
+                    tool_name == "get_account_balance"
+                    and isinstance(tool_result, dict)
+                    and tool_result.get("success")
+                ):
+
+                    self.memory.update_conversation_state(
+                        conversation_id,
+                        {
+                            "account_balance": {
+                                "amount": tool_result["balance"],
+                                "currency": tool_result.get(
+                                    "currency",
+                                    "SAR",
+                                ),
+                            }
+                        },
+                    )
+
             final_response = self.gemini.generate_tools_response(
                 user_message,
                 tool_results,
@@ -147,6 +435,7 @@ class Assistant:
             )
 
             if not final_response:
+
                 final_response = "عذرًا، لم أتمكن من صياغة الإجابة."
 
             self.memory.save_exchange(
@@ -160,7 +449,10 @@ class Assistant:
                 "response": final_response,
             }
 
-        # Single MCP tool
+        # --------------------------------------------------
+        # 12. Single MCP tool
+        # --------------------------------------------------
+
         if action == "tool":
 
             tool_name = decision_data.get("tool_name")
@@ -183,6 +475,26 @@ class Assistant:
 
             print("MCP RESULT:", tool_result)
 
+            # Save the real account balance if retrieved
+            if (
+                tool_name == "get_account_balance"
+                and isinstance(tool_result, dict)
+                and tool_result.get("success")
+            ):
+
+                self.memory.update_conversation_state(
+                    conversation_id,
+                    {
+                        "account_balance": {
+                            "amount": tool_result["balance"],
+                            "currency": tool_result.get(
+                                "currency",
+                                "SAR",
+                            ),
+                        }
+                    },
+                )
+
             final_response = self.gemini.generate_tool_response(
                 user_message,
                 tool_name,
@@ -192,6 +504,7 @@ class Assistant:
             )
 
             if not final_response:
+
                 final_response = "عذرًا، لم أتمكن من صياغة الإجابة."
 
             self.memory.save_exchange(
@@ -205,12 +518,16 @@ class Assistant:
                 "response": final_response,
             }
 
-        # Direct response
+        # --------------------------------------------------
+        # 13. Direct response
+        # --------------------------------------------------
+
         if action == "response":
 
             final_response = decision_data.get("response", "")
 
             if not final_response:
+
                 final_response = "كيف يمكنني مساعدتك؟"
 
             self.memory.save_exchange(
@@ -224,7 +541,10 @@ class Assistant:
                 "response": final_response,
             }
 
-        # RAG knowledge retrieval
+        # --------------------------------------------------
+        # 14. RAG knowledge retrieval
+        # --------------------------------------------------
+
         if action == "knowledge":
 
             results = search_knowledge_base(
@@ -283,6 +603,7 @@ class Assistant:
             )
 
             if not final_response:
+
                 final_response = "عذرًا، لم أتمكن من العثور على إجابة مناسبة."
 
             self.memory.save_exchange(
@@ -296,7 +617,10 @@ class Assistant:
                 "response": final_response,
             }
 
-        # Unknown action
+        # --------------------------------------------------
+        # 15. Unknown action
+        # --------------------------------------------------
+
         return {
             "success": False,
             "response": "عذرًا، حدث خطأ أثناء معالجة طلبك.",

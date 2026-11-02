@@ -301,6 +301,34 @@ def insert_location_data():
     connection.close()
 
 
+def get_transaction_categories():
+    """
+    Get all unique transaction categories from the database.
+    """
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            SELECT DISTINCT category
+            FROM transactions
+            WHERE category IS NOT NULL
+            AND TRIM(category) != ''
+            ORDER BY category
+        """)
+
+        rows = cursor.fetchall()
+
+        categories = [row[0] for row in rows]
+
+        return categories
+
+    finally:
+        connection.close()
+
+
 if __name__ == "__main__":
     create_tables()
     insert_sample_data()

@@ -3,6 +3,7 @@ import os
 
 from dotenv import load_dotenv
 from google import genai
+from database.database import get_transaction_categories
 
 load_dotenv()
 
@@ -105,7 +106,14 @@ IMPORTANT:
         )
 
         conversation_context = self._format_conversation_history(conversation_history)
+        # Get available transaction categories from the database
+        categories = get_transaction_categories()
 
+        categories_json = json.dumps(
+            categories,
+            ensure_ascii=False,
+            indent=2,
+        )
         # Determine location availability
         if latitude is not None and longitude is not None:
 
@@ -223,6 +231,47 @@ AVAILABLE MCP TOOLS
 {tools_json}
 
 ==================================================
+AVAILABLE TRANSACTION CATEGORIES
+==================================================
+
+The following transaction categories are retrieved
+directly from the database:
+
+{categories_json}
+
+CATEGORY SELECTION RULES:
+
+1. Understand the user's Arabic request naturally.
+
+2. Match the intended category to the closest
+   appropriate value in the available categories list.
+
+3. When selecting a category, use its EXACT value
+   as provided in the database.
+
+4. NEVER translate category values.
+
+5. NEVER invent a category.
+
+6. Do not manually create Arabic category synonyms.
+
+7. If the user requests a specific category but
+   no suitable category exists in the list,
+   ask the user for clarification.
+
+8. If the user requests all purchases or expenses
+   without specifying a category, do not select
+   a category. Use transaction_type = "debit"
+   when supported by the selected tool.
+
+9. If the user requests all deposits or income
+   without specifying a category, use
+   transaction_type = "credit" when supported.
+
+10. Do not use a category filter when the user
+    requests all transactions.
+
+==================================================
 CURRENT LOCATION
 ==================================================
 
@@ -334,6 +383,102 @@ Return:
 {{
     "action": "knowledge"
 }}
+
+==================================================
+ACTION 1C: calculation
+==================================================
+
+Use this action when the user requests a hypothetical
+mathematical operation using a previously known
+financial amount.
+
+Examples:
+
+* اطرح منه 30
+* اخصم 100 من المبلغ السابق
+* أضف 200 إلى الناتج
+* اطرح 50 مجدداً
+* كم المتبقي؟
+* كم أصبح المبلغ الآن؟
+
+Return:
+
+{{
+    "action": "calculation",
+    "operation": "subtract",
+    "amount": 30,
+    "reference": "last_result"
+}}
+
+SUPPORTED OPERATIONS:
+
+* subtract
+* add
+* multiply
+* divide
+* show
+
+REFERENCE RULES:
+
+1. "account_balance":
+   Use when the user explicitly refers to the real
+   account balance.
+
+2. "calculation":
+   Use when the user refers to a previous hypothetical
+   calculation.
+
+3. "last_result":
+   Use when the user uses references such as:
+   "منه"، "منها"، "المبلغ السابق"، "المتبقي"،
+   "الناتج السابق"، or "مجدداً".
+
+CALCULATION RULES:
+
+1. Never perform arithmetic yourself.
+
+2. Identify the operation and the amount only.
+
+3. The application will perform the actual calculation.
+
+4. Never invent a missing amount.
+
+5. If the user requests an operation without specifying
+   the amount, ask for clarification.
+
+6. If no previous financial amount exists, ask the user
+   what amount they want to use.
+
+7. Never confuse the actual account balance with
+   a hypothetical calculated amount.
+
+8. Never interpret a hypothetical calculation as
+   authorization to execute a real bank transaction.
+
+9. If the user explicitly requests a real transaction,
+   do not use this action. Follow the appropriate
+   banking transaction workflow if available.
+
+10. For "كم المتبقي؟" or similar questions, use:
+    operation = "show"
+    amount = null
+
+11. For a new operation that clearly refers to the
+    previous calculated result, use:
+    reference = "last_result"
+
+12. If the user explicitly says "من رصيدي الحقيقي",
+    use:
+    reference = "account_balance"
+
+13. If the user explicitly says "من الناتج السابق"
+    or "من الحساب السابق", use:
+    reference = "calculation"
+
+14. Do not select this action for currency conversion.
+    Currency conversion must use the appropriate MCP tool.
+
+15. Return only valid JSON.
 
 ==================================================
 ACTION 2: tool

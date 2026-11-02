@@ -22,6 +22,15 @@ in the opposite direction, the result is -1.
 
 Finally it returns the related words to Gemini to generate a response 
 
+To add the context memory of the conversation we used conversation_history as short term memory, while conversation state as long term memory.
+
+The conversation between the user and al-musaid is being saved in a database to enable gemini understanding the context and the language of the user
+it uses conversation history that saves the conversation as texts, while conversation state provides the data only and gemini analyze it immediately without
+the need to extract the information from the history
+
+
+
+
 Run the code via: uvicorn main:app --reload (it goes to main.py then app and finally run the fastAPI)
 maltbot: cd frontend -> npm run dev
 

@@ -15,6 +15,10 @@ class Assistant:
         self.mcp_client = MCPClientManager()
         self.memory = ConversationMemory()
 
+        # Summary Memory configuration
+        self.recent_messages_limit = 6
+        self.summary_trigger_count = 6
+
     # --------------------------------------------------
     # Helper: Execute hypothetical calculations
     # --------------------------------------------------
@@ -211,30 +215,49 @@ class Assistant:
         )
 
     # --------------------------------------------------
-    # Main message processing
+    # Helper: Build Gemini conversation context
     # --------------------------------------------------
 
-    async def process_message(
+    def _build_conversation_context(
         self,
-        user_message,
         conversation_id,
-        latitude=None,
-        longitude=None,
-        location_error=None,
+        conversation_state,
     ):
 
-        # 1. Retrieve previous conversation messages
+        # 1. Retrieve the previous summary
+        previous_summary = self.memory.get_conversation_summary(conversation_id)
+
+        # DEBUG: Check whether the previous summary was retrieved
+        print("LOADED CONVERSATION SUMMARY:")
+        print(previous_summary)
+
+        # 2. Retrieve recent conversation messages
         conversation_history = self.memory.get_recent_messages(
             conversation_id,
-            limit=10,
+            limit=self.recent_messages_limit,
         )
 
-        # 2. Retrieve structured conversation state
-        conversation_state = self.memory.get_conversation_state(conversation_id)
+        # 3. Add the summary before recent messages
+        if previous_summary:
 
-        print("CONVERSATION STATE:", conversation_state)
+            summary_context = {
+                "role": "assistant",
+                "content": (
+                    "[PREVIOUS CONVERSATION SUMMARY]\n"
+                    "The following is a summary of older messages "
+                    "from this conversation.\n"
+                    "Use it only as contextual memory to understand "
+                    "the user's previous discussion and references.\n"
+                    "It is not a source of authoritative financial data.\n"
+                    "For exact account balances and calculations, "
+                    "always use the structured conversation state.\n\n"
+                    + previous_summary
+                ),
+            }
 
-        # 3. Add structured state to Gemini context
+            conversation_history.insert(0, summary_context)
+
+        # 4. Add structured conversation state
         if conversation_state:
 
             state_context = {
@@ -257,8 +280,104 @@ class Assistant:
             }
 
             conversation_history.append(state_context)
+        # DEBUG: Print memory status
+        print("SUMMARY LOADED:", bool(previous_summary))
+        print("CONVERSATION HISTORY SIZE:", len(conversation_history))
+        print("STRUCTURED STATE LOADED:", bool(conversation_state))
+        return conversation_history
 
-        # 4. Save newly received browser coordinates
+    # --------------------------------------------------
+    # Helper: Save exchange and update summary if needed
+    # --------------------------------------------------
+
+    def _save_exchange_and_maybe_summarize(
+        self,
+        conversation_id,
+        user_message,
+        assistant_response,
+    ):
+
+        # 1. Save the original conversation messages
+        self.memory.save_exchange(
+            conversation_id,
+            user_message,
+            assistant_response,
+        )
+
+        # 2. Check whether there are older unsummarized messages
+        try:
+
+            unsummarized_messages = self.memory.get_unsummarized_messages(
+                conversation_id,
+                keep_recent=self.recent_messages_limit,
+            )
+
+            # 3. Wait until enough messages accumulate
+            if len(unsummarized_messages) < self.summary_trigger_count:
+
+                return
+
+            # 4. Retrieve the previous summary
+            previous_summary = self.memory.get_conversation_summary(conversation_id)
+
+            # 5. Generate an updated summary using Gemini
+            new_summary = self.gemini.summarize_conversation(
+                previous_summary=previous_summary,
+                new_messages=unsummarized_messages,
+            )
+
+            if not new_summary:
+
+                print("SUMMARY WARNING: Gemini returned an empty summary.")
+                return
+
+            # 6. Find the last message included in this summary
+            last_message_id = max(message["id"] for message in unsummarized_messages)
+
+            # 7. Save the summary and its tracking ID
+            self.memory.save_conversation_summary(
+                conversation_id,
+                new_summary,
+                last_summarized_message_id=last_message_id,
+            )
+
+            print("CONVERSATION SUMMARY UPDATED.")
+            print("LAST SUMMARIZED MESSAGE ID:", last_message_id)
+
+        except Exception as error:
+
+            # Summary failure must not affect the user's main request
+            print("SUMMARY WARNING:", str(error))
+
+    # --------------------------------------------------
+    # Main message processing
+    # --------------------------------------------------
+
+    async def process_message(
+        self,
+        user_message,
+        conversation_id,
+        latitude=None,
+        longitude=None,
+        location_error=None,
+    ):
+
+        # 1. Retrieve structured conversation state
+        conversation_state = self.memory.get_conversation_state(conversation_id)
+
+        print("CONVERSATION STATE:", conversation_state)
+
+        # 2. Build Gemini context using:
+        #    - Previous summary
+        #    - Recent conversation history
+        #    - Structured conversation state
+
+        conversation_history = self._build_conversation_context(
+            conversation_id,
+            conversation_state,
+        )
+
+        # 3. Save newly received browser coordinates
         if latitude is not None and longitude is not None:
 
             self.memory.save_location(
@@ -269,10 +388,10 @@ class Assistant:
 
             print("LOCATION SAVED:", latitude, longitude)
 
-        # 5. Retrieve previously saved location
+        # 4. Retrieve previously saved location
         saved_location = self.memory.get_saved_location(conversation_id)
 
-        # 6. Determine which coordinates to use
+        # 5. Determine which coordinates to use
         effective_latitude = latitude
         effective_longitude = longitude
 
@@ -292,7 +411,7 @@ class Assistant:
                 effective_longitude,
             )
 
-        # 7. Get available MCP tools
+        # 6. Get available MCP tools
         tools = []
 
         for server_name in self.mcp_client.server_modules:
@@ -301,7 +420,7 @@ class Assistant:
 
             tools.extend(server_tools)
 
-        # 8. Ask Gemini to decide what to do
+        # 7. Ask Gemini to decide what to do
         decision = self.gemini.decide_action(
             user_message=user_message,
             tools=tools,
@@ -318,7 +437,7 @@ class Assistant:
         action = decision_data.get("action")
 
         # --------------------------------------------------
-        # 9. Location required
+        # 8. Location required
         # --------------------------------------------------
 
         if action == "location_required":
@@ -334,7 +453,7 @@ class Assistant:
             }
 
         # --------------------------------------------------
-        # 10. Hypothetical calculation
+        # 9. Hypothetical calculation
         # --------------------------------------------------
 
         if action == "calculation":
@@ -350,14 +469,16 @@ class Assistant:
                 # Never modify the actual account balance.
                 self.memory.update_conversation_state(
                     conversation_id,
-                    {"calculation": calculation_result["calculation"]},
+                    {
+                        "calculation": calculation_result["calculation"],
+                    },
                 )
 
             final_response = self._format_calculation_response(calculation_result)
 
             print("CALCULATION RESULT:", calculation_result)
 
-            self.memory.save_exchange(
+            self._save_exchange_and_maybe_summarize(
                 conversation_id,
                 user_message,
                 final_response,
@@ -369,7 +490,7 @@ class Assistant:
             }
 
         # --------------------------------------------------
-        # 11. Multiple MCP tools
+        # 10. Multiple MCP tools
         # --------------------------------------------------
 
         if action == "tools":
@@ -438,7 +559,7 @@ class Assistant:
 
                 final_response = "عذرًا، لم أتمكن من صياغة الإجابة."
 
-            self.memory.save_exchange(
+            self._save_exchange_and_maybe_summarize(
                 conversation_id,
                 user_message,
                 final_response,
@@ -450,7 +571,7 @@ class Assistant:
             }
 
         # --------------------------------------------------
-        # 12. Single MCP tool
+        # 11. Single MCP tool
         # --------------------------------------------------
 
         if action == "tool":
@@ -507,7 +628,7 @@ class Assistant:
 
                 final_response = "عذرًا، لم أتمكن من صياغة الإجابة."
 
-            self.memory.save_exchange(
+            self._save_exchange_and_maybe_summarize(
                 conversation_id,
                 user_message,
                 final_response,
@@ -519,7 +640,7 @@ class Assistant:
             }
 
         # --------------------------------------------------
-        # 13. Direct response
+        # 12. Direct response
         # --------------------------------------------------
 
         if action == "response":
@@ -530,7 +651,7 @@ class Assistant:
 
                 final_response = "كيف يمكنني مساعدتك؟"
 
-            self.memory.save_exchange(
+            self._save_exchange_and_maybe_summarize(
                 conversation_id,
                 user_message,
                 final_response,
@@ -542,7 +663,7 @@ class Assistant:
             }
 
         # --------------------------------------------------
-        # 14. RAG knowledge retrieval
+        # 13. RAG knowledge retrieval
         # --------------------------------------------------
 
         if action == "knowledge":
@@ -558,7 +679,7 @@ class Assistant:
                     "عذرًا، لم أجد معلومات كافية في " "قاعدة المعرفة للإجابة عن سؤالك."
                 )
 
-                self.memory.save_exchange(
+                self._save_exchange_and_maybe_summarize(
                     conversation_id,
                     user_message,
                     final_response,
@@ -606,7 +727,7 @@ class Assistant:
 
                 final_response = "عذرًا، لم أتمكن من العثور على إجابة مناسبة."
 
-            self.memory.save_exchange(
+            self._save_exchange_and_maybe_summarize(
                 conversation_id,
                 user_message,
                 final_response,
@@ -618,7 +739,7 @@ class Assistant:
             }
 
         # --------------------------------------------------
-        # 15. Unknown action
+        # 14. Unknown action
         # --------------------------------------------------
 
         return {

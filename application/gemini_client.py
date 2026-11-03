@@ -11,6 +11,7 @@ load_dotenv()
 class GeminiClient:
 
     def __init__(self):
+
         api_key = os.getenv("GEMINI_API_KEY")
 
         if not api_key:
@@ -28,6 +29,7 @@ class GeminiClient:
         formatted_messages = []
 
         for message in conversation_history:
+
             role = message.get("role")
             content = message.get("content", "")
 
@@ -36,8 +38,10 @@ class GeminiClient:
 
             if role == "user":
                 speaker = "المستخدم"
+
             elif role == "assistant":
                 speaker = "المساعد"
+
             else:
                 continue
 
@@ -48,7 +52,98 @@ class GeminiClient:
 
         return "\n".join(formatted_messages)
 
-    def generate_response(self, prompt, conversation_history=None):
+    # Summarize older conversation messages
+    def summarize_conversation(
+        self,
+        previous_summary,
+        new_messages,
+    ):
+        """
+        Generate an updated conversation summary.
+
+        Combines the previous summary with new messages
+        that have not been summarized before.
+        """
+
+        if not new_messages:
+            return previous_summary or ""
+
+        formatted_messages = self._format_conversation_history(new_messages)
+
+        previous_summary = previous_summary or "No previous summary."
+
+        prompt = f"""
+أنت مسؤول عن إدارة الذاكرة السياقية لمساعد بنكي ذكي.
+
+مهمتك تحديث ملخص المحادثة السابقة ليكون مرجعاً مختصراً
+يساعد المساعد على فهم سياق المستخدم وطلباته السابقة.
+
+يجب أن يكون الملخص تراكميّاً:
+ادمج المعلومات المهمة من الملخص السابق والرسائل الجديدة،
+ولا تفقد المعلومات السياقية المهمة عند تحديثه.
+
+قواعد التلخيص:
+
+1. ركز على المواضيع والطلبات التي ناقشها المستخدم.
+2. حدد آخر موضوع تمت مناقشته.
+3. احتفظ بالمعلومات المالية السياقية التي تساعد على فهم الطلبات السابقة،
+   مثل العملات التي طلب المستخدم التحويل بينها ونوع العمليات التي ناقشها.
+4. احتفظ بالمعلومات التي قد تساعد على فهم الإشارات المستقبلية،
+   مثل: "العملة التي طلبتها سابقاً" أو "المعاملة التي تحدثنا عنها".
+5. لا تعِد سرد المحادثة أو كتابة كل رسالة بالتفصيل.
+6. لا تكرر ردود المساعد أو المعلومات المتكررة.
+7. لا تحتفظ بالأرصدة الحالية أو نتائج العمليات الحسابية أو أسعار الصرف
+   باعتبارها بيانات مالية موثوقة.
+   هذه البيانات يجب الرجوع فيها إلى Structured Conversation State
+   أو قاعدة البيانات أو أدوات البنك.
+8. لا تحذف موضوعاً سابقاً مهماً لمجرد أنه أصبح قديماً.
+9. احذف التفاصيل غير الضرورية والتكرارات.
+10. لا تخترع معلومات أو تستنتج أموراً لم يذكرها المستخدم.
+11. استخدم اللغة العربية الواضحة والمختصرة.
+
+حجم الملخص:
+- الحجم المستهدف: من 50 إلى 80 كلمة.
+- الحد الأقصى: 120 كلمة.
+- إذا كانت المحادثة بسيطة، استخدم ملخصاً أقصر.
+- لا تضف معلومات لمجرد الوصول إلى عدد كلمات معين.
+
+التنسيق المطلوب:
+
+المواضيع السابقة:
+- ...
+
+آخر موضوع تمت مناقشته:
+...
+
+معلومات سياقية مهمة:
+- ...
+
+الملخص السابق:
+{previous_summary}
+
+الرسائل الجديدة:
+{formatted_messages}
+
+أعد الملخص المحدّث فقط دون أي مقدمة أو شرح.
+"""
+
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=prompt,
+        )
+
+        summary = (response.text or "").strip()
+
+        if not summary:
+            raise ValueError("Gemini returned an empty conversation summary")
+
+        return summary
+
+    def generate_response(
+        self,
+        prompt,
+        conversation_history=None,
+    ):
 
         conversation_context = self._format_conversation_history(conversation_history)
 
@@ -92,6 +187,7 @@ IMPORTANT:
         tool_descriptions = []
 
         for tool in tools:
+
             tool_descriptions.append(
                 {
                     "name": tool.name,
@@ -106,6 +202,7 @@ IMPORTANT:
         )
 
         conversation_context = self._format_conversation_history(conversation_history)
+
         # Get available transaction categories from the database
         categories = get_transaction_categories()
 
@@ -114,6 +211,7 @@ IMPORTANT:
             ensure_ascii=False,
             indent=2,
         )
+
         # Determine location availability
         if latitude is not None and longitude is not None:
 
@@ -330,6 +428,194 @@ CONVERSATION MEMORY RULES
     the same conversation.
 
 ==================================================
+ACTION SELECTION PRIORITY
+==================================================
+
+Before selecting any action, understand the user's
+actual intent and identify the information required
+to fulfill the request.
+
+You MUST follow this decision priority:
+
+PRIORITY 1: MCP TOOLS
+
+Choose MCP tools when the user needs:
+
+- Current account information.
+- Transaction records.
+- Transaction analysis.
+- Currency conversion.
+- Branch or ATM information.
+- Any information that must be retrieved from
+  the bank database or an external service.
+
+If an available MCP tool can perform the requested
+banking operation, use that tool.
+
+Do NOT choose calculation merely because the request
+contains numbers or mathematical words.
+
+PRIORITY 2: CALCULATION
+
+Choose calculation ONLY when the user requests
+a hypothetical mathematical operation on an amount
+that is already known from the conversation state,
+previous tool results, or conversation context.
+
+Examples:
+
+- اطرح 300 من رصيدي.
+- لو خصمت 100 كم سيصبح رصيدي؟
+- أضف 200 إلى الناتج السابق.
+- لو كررت آخر عملية خصم، كم سيصبح رصيدي؟
+- اطرح قيمة آخر عملية شراء من رصيدي.
+
+The calculation action performs hypothetical arithmetic.
+It does NOT retrieve banking information or execute
+real banking transactions.
+
+PRIORITY 3: KNOWLEDGE
+
+Choose knowledge when the user asks for general
+banking information that does not require account data
+or live banking operations.
+
+PRIORITY 4: RESPONSE
+
+Choose response for greetings, thanks, and requests
+outside the banking scope.
+
+==================================================
+CRITICAL DISTINCTION: CALCULATION VS MCP
+==================================================
+
+The presence of an amount, a number, or an arithmetic
+expression does NOT automatically mean calculation.
+
+Use these distinctions:
+
+1. RETRIEVING FINANCIAL DATA:
+
+"كم رصيدي؟"
+"ما آخر عملية خصم؟"
+"كم مجموع مصروفاتي؟"
+
+Use the appropriate MCP tool.
+
+2. ANALYZING TRANSACTIONS:
+
+"كم مجموع مشترياتي؟"
+"ما متوسط مصروفاتي؟"
+"ما أكبر عملية شراء؟"
+"ما أكثر فئة أنفق عليها؟"
+
+Use the available transaction tools that can provide
+the required data.
+
+3. CURRENCY CONVERSION:
+
+"حول رصيدي إلى دولار."
+"كم يساوي 3500 ريال بالدولار؟"
+"حول المبلغ السابق إلى جنيه استرليني."
+
+Use convert_currency.
+
+NEVER use calculation for currency conversion.
+
+4. HYPOTHETICAL ARITHMETIC:
+
+"اطرح 300 من رصيدي."
+"لو خصمت آخر عملية مرة أخرى، كم سيصبح رصيدي؟"
+"أضف 100 إلى الناتج السابق."
+
+Use calculation.
+
+==================================================
+FOLLOW-UP REFERENCE RESOLUTION
+==================================================
+
+When the current message contains pronouns or
+references such as:
+
+- منه
+- منها
+- هذا المبلغ
+- المبلغ السابق
+- الناتج السابق
+- مجموعها
+- آخر عملية
+- آخر عملية خصم
+- رصيدي بعد الخصم
+- حوله
+- اطرحها
+
+You MUST inspect the previous conversation and
+structured context to identify what the user means.
+
+Apply these rules:
+
+1. If the reference points to a previous transaction,
+   use the relevant transaction MCP tool when more
+   transaction data is required.
+
+2. If the reference points to a previous balance,
+   use account_balance from structured state when
+   the user requests hypothetical arithmetic.
+
+3. If the reference points to a previous hypothetical
+   calculation, use the calculation state.
+
+4. If the user asks to convert a previously mentioned
+   amount, use convert_currency with the correct amount
+   and currency.
+
+5. If the user asks about a previous transaction result,
+   distinguish between retrieving that result and
+   performing arithmetic on it.
+
+6. Never replace a transaction amount with the account
+   balance simply because the balance is available.
+
+7. Never replace a previous calculation result with
+   the original account balance unless the user
+   explicitly refers to the original balance.
+
+8. If the intended reference cannot be identified
+   reliably, ask for clarification instead of guessing.
+
+==================================================
+TRANSACTION TOOL SELECTION
+==================================================
+
+Choose tools according to the requested result:
+
+1. Use analyze_transactions for supported aggregate
+   analysis such as:
+   - Total spending.
+   - Average spending.
+   - Number of transactions.
+   - Supported date comparisons.
+
+2. Use search_transactions for retrieving transaction
+   records such as:
+   - Latest transactions.
+   - Purchases.
+   - Deposits.
+   - Transactions by category.
+   - Largest or smallest transaction when the
+     returned records contain the required data.
+
+3. If the user requests both aggregate analysis
+   and individual transaction details, use multiple
+   tools when necessary.
+
+4. Never assume a tool returns information that is
+   not included in its description or result.
+
+5. If a requested analysis cannot be obtained from
+   the available tools, do not invent the result.
+
+==================================================
 ACTION 1: response
 ==================================================
 
@@ -388,97 +674,173 @@ Return:
 ACTION 1C: calculation
 ==================================================
 
-Use this action when the user requests a hypothetical
-mathematical operation using a previously known
-financial amount.
+Use this action ONLY for hypothetical mathematical
+operations on previously known financial amounts.
+
+The application will execute the actual arithmetic.
+
+IMPORTANT:
+
+Calculation is NOT a replacement for MCP tools.
+
+Use MCP tools whenever the user needs to retrieve,
+analyze, or convert actual banking information.
+
+Do NOT select calculation for:
+
+- Account balance retrieval.
+- Transaction retrieval.
+- Transaction analysis.
+- Currency conversion.
+- Branch or ATM searches.
+- Any operation requiring fresh external data.
+
+==================================================
+WHEN TO USE CALCULATION
+==================================================
 
 Examples:
 
-* اطرح منه 30
-* اخصم 100 من المبلغ السابق
-* أضف 200 إلى الناتج
-* اطرح 50 مجدداً
-* كم المتبقي؟
-* كم أصبح المبلغ الآن؟
+1. اطرح 300 من رصيدي.
+2. أضف 200 إلى الناتج السابق.
+3. اطرح 50 مجدداً.
+4. لو خصمت آخر عملية مرة أخرى كم سيصبح رصيدي؟
+5. اطرح قيمة آخر عملية خصم من رصيدي الأصلي.
+6. كم سيصبح المبلغ إذا ضربته في 2؟
+7. اقسم الناتج السابق على 2.
 
-Return:
+==================================================
+WHEN NOT TO USE CALCULATION
+==================================================
+
+Examples:
+
+1. كم رصيدي؟
+   Use get_account_balance.
+
+2. حول رصيدي إلى دولار.
+   Use convert_currency.
+
+3. اعرض آخر معاملاتي.
+   Use search_transactions.
+
+4. كم مجموع مصروفاتي؟
+   Use analyze_transactions.
+
+5. ما أكبر عملية شراء؟
+   Use search_transactions.
+
+6. كم مجموع مشتريات المطاعم وما أكبر عملية؟
+   Use analyze_transactions and search_transactions
+   when both results are required.
+
+7. كم يساوي رصيدي بالدولار؟
+   Use get_account_balance if the actual balance
+   is not available, then convert_currency.
+
+==================================================
+SUPPORTED OPERATIONS
+==================================================
+
+- subtract
+- add
+- multiply
+- divide
+- show
+
+==================================================
+REFERENCE RULES
+==================================================
+
+1. "account_balance":
+
+   Use when the user explicitly refers to the
+   original or actual account balance.
+
+2. "calculation":
+
+   Use when the user explicitly refers to a previous
+   hypothetical calculation result.
+
+3. "last_result":
+
+   Use when the user refers to the most recent
+   relevant amount or result.
+
+   Examples:
+   - الناتج السابق
+   - المبلغ السابق
+   - منه
+   - منها
+   - المتبقي
+
+   IMPORTANT:
+
+   Identify the actual referenced amount from the
+   conversation context.
+
+   Do NOT automatically assume that last_result
+   means account_balance.
+
+==================================================
+CALCULATION RULES
+==================================================
+
+1. Never perform arithmetic yourself.
+
+2. Identify the operation and amount only.
+
+3. The application performs the actual calculation.
+
+4. Never invent a missing amount.
+
+5. If the required amount cannot be identified,
+   ask for clarification.
+
+6. If no previous financial amount exists,
+   ask the user what amount they want to use.
+
+7. Never confuse the original account balance
+   with a hypothetical calculated amount.
+
+8. Never interpret hypothetical arithmetic as
+   authorization to execute a real bank transaction.
+
+9. If the user explicitly requests a real banking
+   transaction, do not use this action.
+
+10. For "كم المتبقي؟" or similar questions,
+    use operation = "show" only when the user
+    clearly refers to an existing calculation.
+
+11. When the user refers to the previous calculated
+    result, use reference = "calculation".
+
+12. When the user explicitly refers to the original
+    account balance, use reference = "account_balance".
+
+13. When the user refers to a known recent result
+    without specifying its source, use reference
+    = "last_result".
+
+14. NEVER use calculation for currency conversion.
+
+15. If the user asks to calculate something using
+    a transaction amount, first identify that amount
+    from the conversation or previous MCP results.
+
+16. Return only valid JSON.
+
+==================================================
+RETURN FORMAT
+==================================================
 
 {{
     "action": "calculation",
     "operation": "subtract",
     "amount": 30,
-    "reference": "last_result"
+    "reference": "account_balance"
 }}
-
-SUPPORTED OPERATIONS:
-
-* subtract
-* add
-* multiply
-* divide
-* show
-
-REFERENCE RULES:
-
-1. "account_balance":
-   Use when the user explicitly refers to the real
-   account balance.
-
-2. "calculation":
-   Use when the user refers to a previous hypothetical
-   calculation.
-
-3. "last_result":
-   Use when the user uses references such as:
-   "منه"، "منها"، "المبلغ السابق"، "المتبقي"،
-   "الناتج السابق"، or "مجدداً".
-
-CALCULATION RULES:
-
-1. Never perform arithmetic yourself.
-
-2. Identify the operation and the amount only.
-
-3. The application will perform the actual calculation.
-
-4. Never invent a missing amount.
-
-5. If the user requests an operation without specifying
-   the amount, ask for clarification.
-
-6. If no previous financial amount exists, ask the user
-   what amount they want to use.
-
-7. Never confuse the actual account balance with
-   a hypothetical calculated amount.
-
-8. Never interpret a hypothetical calculation as
-   authorization to execute a real bank transaction.
-
-9. If the user explicitly requests a real transaction,
-   do not use this action. Follow the appropriate
-   banking transaction workflow if available.
-
-10. For "كم المتبقي؟" or similar questions, use:
-    operation = "show"
-    amount = null
-
-11. For a new operation that clearly refers to the
-    previous calculated result, use:
-    reference = "last_result"
-
-12. If the user explicitly says "من رصيدي الحقيقي",
-    use:
-    reference = "account_balance"
-
-13. If the user explicitly says "من الناتج السابق"
-    or "من الحساب السابق", use:
-    reference = "calculation"
-
-14. Do not select this action for currency conversion.
-    Currency conversion must use the appropriate MCP tool.
-
-15. Return only valid JSON.
 
 ==================================================
 ACTION 2: tool
@@ -614,8 +976,8 @@ IMPORTANT RULES
 22. When generating a response, match the user's
     language style and dialect when possible.
 
-23. If the user uses a dialect, respond naturally in
-    a similar dialect without exaggerating it.
+23. If the user uses a dialect, respond naturally
+    in a similar dialect without exaggerating it.
 
 24. If the user's dialect cannot be determined,
     use clear and natural Arabic.
@@ -669,6 +1031,7 @@ USER MESSAGE
         location_status = ""
 
         if location_error:
+
             location_status = f"""
 The user's browser location could not be obtained.
 
@@ -757,6 +1120,7 @@ Return only the final user-facing response.
         location_status = ""
 
         if location_error:
+
             location_status = f"""
 IMPORTANT:
 
@@ -924,6 +1288,7 @@ Return ONLY the final user-facing response.
             data = json.loads(text)
 
         except json.JSONDecodeError as error:
+
             raise ValueError(f"Gemini returned invalid JSON:\n{text}") from error
 
         return json.dumps(

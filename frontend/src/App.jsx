@@ -6,13 +6,30 @@ const SpeechRecognition =
   window.SpeechRecognition ||
   window.webkitSpeechRecognition;
 
+// نفس حد الجوال المستخدم في App.css
+const isMobileScreen = () =>
+  window.matchMedia("(max-width: 700px)").matches;
+
+// وقت الرسالة يُحفظ لحظة إنشائها (شكلي فقط)
+const formatTime = () =>
+  new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
 function App() {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [isListening, setIsListening] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // القائمة ظاهرة افتراضياً على الشاشات الكبيرة ومخفية على الجوال
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => !isMobileScreen()
+  );
+
+  // الوضع الليلي (شكلي فقط)
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Create one ID for the current conversation
   const [conversationId, setConversationId] = useState(
@@ -27,6 +44,7 @@ function App() {
         id: Date.now() + Math.random(),
         text,
         sender: "assistant",
+        time: formatTime(),
       },
     ]);
   };
@@ -282,6 +300,7 @@ function App() {
         id: Date.now() + Math.random(),
         text: userMessage,
         sender: "user",
+        time: formatTime(),
       },
     ]);
 
@@ -316,99 +335,134 @@ function App() {
   };
 
   return (
-    <div className="app" dir="rtl">
+    <div className={`app ${isDarkMode ? "dark-mode" : ""}`} dir="rtl">
 
-      {/* Sidebar */}
+      {/* ================= SIDEBAR ================= */}
 
-      <aside
-        className={`sidebar ${sidebarOpen ? "open" : ""
-          }`}
-      >
-        <div className="logo">
-          <div className="logo-icon">
-            M
+      <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
+
+        <div className="brand">
+          <div className="brand-logo">
+            <span>M</span>
           </div>
 
           <div>
             <h2>MaltBot</h2>
+            <p>Your Banking Assistant</p>
+          </div>
+        </div>
 
-            <span>
-              المساعد الذكي
+        <button className="new-chat" onClick={startNewChat}>
+          <span className="plus">＋</span>
+          محادثة جديدة
+        </button>
+
+        <div className="history">
+          <h3>المحادثات السابقة</h3>
+
+          <div className="history-item">
+            <span className="history-title">
+              لا توجد محادثات سابقة
             </span>
           </div>
         </div>
 
-        <button
-          className="new-chat"
-          onClick={startNewChat}
-        >
-          + محادثة جديدة
-        </button>
+        <div className="sidebar-bottom">
 
-        <div className="history">
-          <h3>
-            المحادثات
-          </h3>
+          <div className="appearance-option">
+            <div className="appearance-info">
+              <span className="appearance-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="22"
+                  height="22"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42" />
+                </svg>
+              </span>
+              <span>الوضع الليلي</span>
+            </div>
 
-          <div className="history-item">
-            لا توجد محادثات سابقة
+            <button
+              className={`appearance-switch ${isDarkMode ? "active" : ""}`}
+              type="button"
+              aria-label="تغيير الوضع الليلي"
+              aria-pressed={isDarkMode}
+              onClick={() => setIsDarkMode((prev) => !prev)}
+            >
+              <span></span>
+            </button>
           </div>
+
+          <button className="bottom-item">
+            <span>⚙</span>
+            الإعدادات
+          </button>
+
+          <button className="bottom-item">
+            <span>↪</span>
+            تسجيل الخروج
+          </button>
         </div>
       </aside>
 
-      {/* Main chat */}
+      {/* ================= MAIN CHAT ================= */}
 
-      <main className="chat">
-
-        {/* Menu */}
-
-        <button
-          className={`menu-button ${sidebarOpen ? "sidebar-open" : ""
-            }`}
-          onClick={() =>
-            setSidebarOpen((prev) => !prev)
+      <main
+        className="chat"
+        onClick={() => {
+          // على الجوال فقط: الضغط على المحادثة يغلق القائمة
+          if (sidebarOpen && isMobileScreen()) {
+            setSidebarOpen(false);
           }
-          aria-label="فتح أو إغلاق القائمة"
-        >
-          ☰
-        </button>
+        }}
+      >
 
-        {/* Header */}
+        {/* HEADER */}
 
         <header className="chat-header">
-          <div>
-            <h1>
-              MaltBot
-            </h1>
+          <button
+            className="menu-button"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSidebarOpen((prev) => !prev);
+            }}
+            aria-label={sidebarOpen ? "إخفاء القائمة" : "إظهار القائمة"}
+            aria-expanded={sidebarOpen}
+          >
+            ☰
+          </button>
 
-            <p>
-              المساعد الذكي للخدمات المصرفية
-            </p>
-          </div>
-
-          <div className="status">
-            <span></span>
-            متصل
+          <div className="header-info">
+            <h1>MaltBot</h1>
           </div>
         </header>
 
-        {/* Messages */}
+        {/* ================= MESSAGES ================= */}
 
         <section className="messages">
 
           {messages.length === 0 ? (
+
             <div className="welcome">
 
-              <div className="welcome-icon">
-                M
+              <div className="welcome-avatar">
+                🤖
               </div>
 
-              <h2>
-                مرحباً بك في MaltBot 👋
-              </h2>
+              <h2>مرحباً بك في MaltBot 👋</h2>
 
               <p>
                 أنا مساعدك الذكي.
+                <br />
                 اكتب سؤالك وسأساعدك.
               </p>
 
@@ -446,40 +500,84 @@ function App() {
 
               </div>
             </div>
+
           ) : (
+
             messages.map((item) => (
               <div
                 key={item.id}
-                className={`message ${item.sender}`}
+                className={`message-row ${item.sender}`}
               >
-                {item.text}
+                <div className="avatar">
+                  {item.sender === "assistant" ? "🤖" : "●"}
+                </div>
+
+                <div className="message-content">
+                  <div className="message">
+                    {item.text}
+                  </div>
+
+                  <span className="message-time">
+                    {item.time}
+                  </span>
+                </div>
               </div>
             ))
+
           )}
 
           {/* Loading */}
 
           {loading && (
-            <div className="message assistant loading">
-              MaltBot يكتب...
+            <div className="message-row assistant">
+              <div className="avatar">🤖</div>
+
+              <div className="message-content">
+                <div
+                  className="message loading"
+                  aria-label="MaltBot يكتب..."
+                >
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
             </div>
           )}
 
           {/* Error */}
 
           {error && (
-            <div className="message error">
+            <div className="error">
               {error}
             </div>
           )}
 
         </section>
 
-        {/* Input */}
+        {/* ================= INPUT ================= */}
 
         <div className="input-area">
-
           <div className="input-box">
+
+            <button
+              className="attach-button"
+              type="button"
+              aria-label="إرفاق ملف"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="23"
+                height="23"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="m21.4 11.1-8.5 8.5a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" />
+              </svg>
+            </button>
 
             <input
               type="text"
@@ -496,24 +594,53 @@ function App() {
               disabled={loading}
             />
 
-            <button
-              type="button"
-              className="voice-button"
-              onClick={startListening}
-              disabled={loading}
-            >
-              {isListening ? "🔴" : "🎤"}
-            </button>
-
-            <button
-              className="send-button"
-              onClick={sendMessage}
-              disabled={loading}
-            >
-              {loading
-                ? "جاري الإرسال..."
-                : "إرسال"}
-            </button>
+            {message.trim() ? (
+              <button
+                className="send-button"
+                type="button"
+                onClick={sendMessage}
+                disabled={loading}
+                aria-label="إرسال"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="22"
+                  height="22"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M22 2 11 13" />
+                  <path d="m22 2-7 20-4-9-9-4Z" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                className={`voice-button ${isListening ? "recording" : ""}`}
+                type="button"
+                onClick={startListening}
+                disabled={loading}
+                aria-label="التحدث"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="22"
+                  height="22"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="9" y="2" width="6" height="12" rx="3" />
+                  <path d="M5 10a7 7 0 0 0 14 0" />
+                  <path d="M12 17v5" />
+                  <path d="M8 22h8" />
+                </svg>
+              </button>
+            )}
 
           </div>
 

@@ -70,6 +70,67 @@ def create_tables():
     connection.close()
 
 
+def migrate_users_table():
+    """
+    Add authentication-related columns to the existing users table.
+    Safe to run multiple times.
+    """
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        # Get existing columns
+        cursor.execute("PRAGMA table_info(users)")
+        existing_columns = {column[1] for column in cursor.fetchall()}
+
+        # Add password_hash
+        if "password_hash" not in existing_columns:
+            cursor.execute("""
+                ALTER TABLE users
+                ADD COLUMN password_hash TEXT
+            """)
+
+            print("Added password_hash column.")
+
+        # Add is_active
+        if "is_active" not in existing_columns:
+            cursor.execute("""
+                ALTER TABLE users
+                ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1
+            """)
+
+            print("Added is_active column.")
+
+        # Add created_at
+        if "created_at" not in existing_columns:
+            cursor.execute("""
+                ALTER TABLE users
+                ADD COLUMN created_at TEXT
+            """)
+
+            print("Added created_at column.")
+
+        # Set creation date for existing users
+        cursor.execute("""
+            UPDATE users
+            SET created_at = CURRENT_TIMESTAMP
+            WHERE created_at IS NULL OR TRIM(created_at) = ''
+        """)
+
+        connection.commit()
+
+        print("Users table migration completed successfully.")
+
+    except Exception:
+        connection.rollback()
+        raise
+
+    finally:
+        connection.close()
+
+
 def insert_transaction(cursor, transaction):
     """
     Insert a transaction only if the same transaction
@@ -331,6 +392,9 @@ def get_transaction_categories():
 
 if __name__ == "__main__":
     create_tables()
+
+    migrate_users_table()
+
     insert_sample_data()
     insert_july_data()
     insert_location_data()

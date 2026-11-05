@@ -3,10 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from uuid import uuid4
 
+from application.auth import router as auth_router
 from application.assistant import Assistant
 
 app = FastAPI()
-
+app.include_router(auth_router)
 
 # CORS
 app.add_middleware(

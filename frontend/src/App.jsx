@@ -1,21 +1,82 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
-import { sendMessage as sendApiMessage } from "./services/api";
+import {
+  sendMessage as sendApiMessage,
+  getStoredSession,
+  clearSession,
+  AuthExpiredError,
+  ConversationForbiddenError,
+  fetchConversations,
+  fetchConversationMessages,
+  deleteConversation,
+  getGuestConversations,
+  saveGuestConversation,
+  removeGuestConversation,
+} from "./services/api";
+import AuthModal from "./AuthModal";
+import ConfirmDialog from "./ConfirmDialog";
+import FormattedMessage from "./FormattedMessage";
 
 const SpeechRecognition =
   window.SpeechRecognition ||
   window.webkitSpeechRecognition;
+
+// رسائل واضحة لأخطاء التعرف على الصوت
+const SPEECH_ERROR_MESSAGES = {
+  "not-allowed": "يرجى السماح للمتصفح باستخدام الميكروفون ثم المحاولة مرة أخرى.",
+  "service-not-allowed": "يرجى السماح للمتصفح باستخدام الميكروفون ثم المحاولة مرة أخرى.",
+  "no-speech": "لم يتم سماع أي كلام. حاول مرة أخرى.",
+  "audio-capture": "لم يتم العثور على ميكروفون متصل بالجهاز.",
+  network: "تعذر الاتصال بخدمة التعرف على الصوت. تحقق من الإنترنت.",
+};
+
+// اقتراحات بداية المحادثة: تُرسل مباشرة عند الضغط عليها
+const GUEST_SUGGESTIONS = [
+  "ما هي الخدمات المصرفية المتاحة؟",
+  "ما الفرق بين الحساب الجاري وحساب التوفير؟",
+  "حوّل 100 دولار إلى ريال سعودي",
+  "أين أقرب صراف آلي؟",
+];
+
+const USER_SUGGESTIONS = [
+  "كم رصيدي؟",
+  "اعرض آخر معاملاتي",
+  "كم أنفقت في المطاعم؟",
+  "قارن مصروفاتي بين سبتمبر وأكتوبر",
+  "حلل مصروفاتي في أكتوبر",
+  "أين أقرب فرع؟",
+];
+
+// صورة المستخدم الرمزية حسب الجنس، وشخصية غامضة للزائر أو غير المحدد
+const getUserAvatar = (user) => {
+  if (user?.gender === "male") return "👨";
+  if (user?.gender === "female") return "👩";
+  return "👤";
+};
 
 // نفس حد الجوال المستخدم في App.css
 const isMobileScreen = () =>
   window.matchMedia("(max-width: 700px)").matches;
 
 // وقت الرسالة يُحفظ لحظة إنشائها (شكلي فقط)
-const formatTime = () =>
-  new Date().toLocaleTimeString([], {
+const formatTime = (date = new Date()) =>
+  new Date(date).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
+
+// تاريخ مختصر لقائمة المحادثات: الوقت لليوم، والتاريخ لما قبله
+const formatHistoryDate = (iso) => {
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  const isToday = date.toDateString() === new Date().toDateString();
+
+  return isToday
+    ? formatTime(date)
+    : date.toLocaleDateString("ar", { day: "numeric", month: "short" });
+};
 
 function App() {
   const [message, setMessage] = useState("");
@@ -23,10 +84,45 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [isListening, setIsListening] = useState(false);
+
+  // جلسة التعرف على الصوت الحالية (لإيقافها عند الحاجة)
+  const recognitionRef = useRef(null);
   // القائمة ظاهرة افتراضياً على الشاشات الكبيرة ومخفية على الجوال
   const [sidebarOpen, setSidebarOpen] = useState(
     () => !isMobileScreen()
   );
+
+  // المستخدم المسجل حالياً (null = زائر)
+  const [currentUser, setCurrentUser] = useState(
+    () => getStoredSession()?.user ?? null
+  );
+
+  // نافذة تسجيل الدخول / إنشاء الحساب
+  const [authModal, setAuthModal] = useState(null);
+
+  // المحادثات السابقة: للمستخدم من الخادم، وللزائر من هذا المتصفح فقط
+  const [conversations, setConversations] = useState([]);
+
+  // المحادثة المفتوح لها قائمة الخيارات (⋮)
+  const [menuConversationId, setMenuConversationId] = useState(null);
+
+  // المحادثة التي ينتظر حذفها تأكيد المستخدم
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+
+  // إغلاق قائمة الخيارات عند الضغط في أي مكان آخر
+  useEffect(() => {
+    if (!menuConversationId) return;
+
+    const close = () => setMenuConversationId(null);
+
+    window.addEventListener("click", close);
+
+    return () => window.removeEventListener("click", close);
+  }, [menuConversationId]);
+
+  const openAuthModal = (notice = "") => {
+    setAuthModal({ notice });
+  };
 
   // الوضع الليلي (شكلي فقط)
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -37,7 +133,7 @@ function App() {
   );
 
   // Add assistant message
-  const addAssistantMessage = (text) => {
+  const addAssistantMessage = (text, extra = {}) => {
     setMessages((prev) => [
       ...prev,
       {
@@ -45,8 +141,146 @@ function App() {
         text,
         sender: "assistant",
         time: formatTime(),
+        ...extra,
       },
     ]);
+  };
+
+  // تحميل قائمة المحادثات حسب نوع المستخدم
+  const loadConversations = async (user = currentUser) => {
+    if (!user) {
+      setConversations(getGuestConversations());
+      return;
+    }
+
+    try {
+      setConversations(await fetchConversations());
+    } catch (err) {
+      if (err instanceof AuthExpiredError) {
+        handleAuthExpired(err);
+        return;
+      }
+
+      console.error("Conversations error:", err);
+    }
+  };
+
+  // عند تسجيل الدخول أو الخروج تتبدل القائمة تلقائياً
+  useEffect(() => {
+    loadConversations(currentUser);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
+
+  // تحديث القائمة بعد كل رسالة ناجحة
+  const refreshHistory = (userMessage, currentConversationId) => {
+    if (currentUser) {
+      loadConversations(currentUser);
+    } else {
+      setConversations(
+        saveGuestConversation(currentConversationId, userMessage)
+      );
+    }
+  };
+
+  // فتح محادثة سابقة
+  const openConversation = async (id) => {
+    if (loading || id === conversationId) return;
+
+    stopListening();
+    setError("");
+
+    if (isMobileScreen()) setSidebarOpen(false);
+
+    try {
+      const history = await fetchConversationMessages(id);
+
+      // المحادثة غير موجودة أو ليست ملكاً لهذا المستخدم
+      if (history === null) {
+        if (!currentUser) setConversations(removeGuestConversation(id));
+        setError("تعذر فتح هذه المحادثة.");
+        return;
+      }
+
+      setMessages(
+        history.map((m) => ({
+          id: m.id,
+          text: m.content,
+          sender: m.role === "user" ? "user" : "assistant",
+          time: formatTime(m.created_at),
+        }))
+      );
+
+      setMessage("");
+      setConversationId(id);
+    } catch (err) {
+      if (err instanceof AuthExpiredError) {
+        handleAuthExpired(err);
+        return;
+      }
+
+      setError(err.message);
+    }
+  };
+
+  // حذف محادثة من القائمة
+  const handleDeleteConversation = (id) => {
+    setMenuConversationId(null);
+    setPendingDeleteId(id);
+  };
+
+  const confirmDeleteConversation = async () => {
+    const id = pendingDeleteId;
+
+    setPendingDeleteId(null);
+
+    if (!id) return;
+
+    try {
+      await deleteConversation(id);
+
+      if (currentUser) {
+        setConversations((prev) =>
+          prev.filter((c) => c.conversation_id !== id)
+        );
+      } else {
+        setConversations(removeGuestConversation(id));
+      }
+
+      // إذا كانت المحادثة المحذوفة مفتوحة نبدأ محادثة جديدة
+      if (id === conversationId) startNewChat();
+    } catch (err) {
+      if (err instanceof AuthExpiredError) {
+        handleAuthExpired(err);
+        return;
+      }
+
+      setError(err.message);
+    }
+  };
+
+  // رسالة حالة محلية (مثل تحديد الموقع): تظهر في الواجهة فقط ولا تُرسل أو تُحفظ
+  const addStatusMessage = (text) => {
+    const id = Date.now() + Math.random();
+
+    setMessages((prev) => [
+      ...prev,
+      { id, text, sender: "assistant", status: true, time: formatTime() },
+    ]);
+
+    return id;
+  };
+
+  const updateStatusMessage = (id, text) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, text } : m))
+    );
+  };
+
+  // الجلسة انتهت أو أصبحت غير صالحة
+  const handleAuthExpired = (error) => {
+    setCurrentUser(null);
+    setError(error.message);
+    openAuthModal(error.message);
   };
 
   // Send message to backend
@@ -85,14 +319,30 @@ function App() {
           result.location_type
         );
 
+        const statusId = addStatusMessage("📍 جارٍ تحديد موقعك...");
+
         // Request location using the SAME conversation ID
         await requestCurrentLocation(
           userMessage,
-          currentConversationId
+          currentConversationId,
+          statusId
         );
 
         return;
       }
+
+      // Private banking data requires login
+      if (result?.action === "login_required") {
+        addAssistantMessage(result.response, {
+          loginRequired: true,
+        });
+
+        refreshHistory(userMessage, currentConversationId);
+
+        return;
+      }
+
+      refreshHistory(userMessage, currentConversationId);
 
       // Normal response
       if (result?.response) {
@@ -105,6 +355,18 @@ function App() {
     } catch (error) {
       console.error("Backend Error:", error);
 
+      if (error instanceof AuthExpiredError) {
+        handleAuthExpired(error);
+        return;
+      }
+
+      // المحادثة ليست ملكاً للمستخدم الحالي
+      if (error instanceof ConversationForbiddenError) {
+        startNewChat();
+        setError(error.message);
+        return;
+      }
+
       setError(
         "تعذر الاتصال بالخادم. حاول مرة أخرى."
       );
@@ -116,9 +378,14 @@ function App() {
   // Request current browser location
   const requestCurrentLocation = async (
     userMessage,
-    currentConversationId
+    currentConversationId,
+    statusId = null
   ) => {
     if (!navigator.geolocation) {
+      if (statusId) {
+        updateStatusMessage(statusId, "⚠️ المتصفح لا يدعم تحديد الموقع.");
+      }
+
       console.error(
         "Geolocation is not supported."
       );
@@ -143,6 +410,10 @@ function App() {
           latitude,
           longitude,
         });
+
+        if (statusId) {
+          updateStatusMessage(statusId, "✅ تم تحديد موقعك.");
+        }
 
         // Resend the SAME message with the SAME conversation ID
         await sendMessageToBackend(
@@ -179,6 +450,15 @@ function App() {
           reason = "timeout";
         }
 
+        if (statusId) {
+          updateStatusMessage(
+            statusId,
+            reason === "denied"
+              ? "⚠️ لم يتم السماح بالوصول إلى موقعك."
+              : "⚠️ تعذر تحديد موقعك."
+          );
+        }
+
         // Send location error with the SAME conversation ID
         await sendLocationUnavailable(
           userMessage,
@@ -201,6 +481,8 @@ function App() {
     reason,
     currentConversationId
   ) => {
+    setLoading(true);
+
     try {
       console.log(
         "Location unavailable:",
@@ -229,20 +511,53 @@ function App() {
           "تعذر الحصول على موقعك الحالي."
         );
       }
+
+      refreshHistory(userMessage, currentConversationId);
     } catch (error) {
       console.error(
         "Location error API:",
         error
       );
 
+      if (error instanceof AuthExpiredError) {
+        handleAuthExpired(error);
+        return;
+      }
+
       setError(
         "تعذر الاتصال بالخادم. حاول مرة أخرى."
       );
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Voice recognition
-  const startListening = () => {
+  // إيقاف التسجيل الصوتي الجاري (إن وجد)
+  const stopListening = () => {
+    const recognition = recognitionRef.current;
+
+    if (!recognition) return;
+
+    // فصل المعالجات حتى لا يُكتب أي نص بعد الإيقاف
+    recognition.onresult = null;
+    recognition.onerror = null;
+    recognition.onend = null;
+    recognition.abort();
+
+    recognitionRef.current = null;
+    setIsListening(false);
+  };
+
+  // إيقاف التسجيل عند إغلاق الصفحة أو إزالة المكوّن
+  useEffect(() => stopListening, []);
+
+  // Voice recognition: الضغط مرة يبدأ التسجيل، والضغط مرة ثانية يوقفه
+  const toggleListening = () => {
+    if (recognitionRef.current) {
+      stopListening();
+      return;
+    }
+
     if (!SpeechRecognition) {
       setError(
         "المتصفح لا يدعم التعرف على الصوت."
@@ -251,7 +566,11 @@ function App() {
       return;
     }
 
+    setError("");
+
     const recognition = new SpeechRecognition();
+
+    recognitionRef.current = recognition;
 
     recognition.lang = "ar-SA";
     recognition.continuous = false;
@@ -268,28 +587,40 @@ function App() {
       setMessage(transcript);
     };
 
-    recognition.onerror = () => {
-      setError(
-        "تعذر التعرف على الصوت. حاول مرة أخرى."
-      );
+    recognition.onerror = (event) => {
+      // الإلغاء المقصود لا يحتاج رسالة خطأ
+      if (event.error !== "aborted") {
+        setError(
+          SPEECH_ERROR_MESSAGES[event.error] ??
+            "تعذر التعرف على الصوت. حاول مرة أخرى."
+        );
+      }
 
+      recognitionRef.current = null;
       setIsListening(false);
     };
 
     recognition.onend = () => {
+      recognitionRef.current = null;
       setIsListening(false);
     };
 
-    recognition.start();
+    try {
+      recognition.start();
+    } catch {
+      recognitionRef.current = null;
+      setIsListening(false);
+      setError("تعذر تشغيل الميكروفون. حاول مرة أخرى.");
+    }
   };
 
   // Send user message
-  const sendMessage = async () => {
-    if (!message.trim() || loading) {
+  const sendMessage = async (text = message) => {
+    if (!text.trim() || loading) {
       return;
     }
 
-    const userMessage = message.trim();
+    const userMessage = text.trim();
 
     setError("");
 
@@ -318,6 +649,9 @@ function App() {
 
   // Start new chat
   const startNewChat = () => {
+    // لا نسمح لتسجيل صوتي قديم بالكتابة في المحادثة الجديدة
+    stopListening();
+
     setMessages([]);
     setMessage("");
     setError("");
@@ -334,6 +668,19 @@ function App() {
     );
   };
 
+  // بعد تسجيل الدخول: نبدأ محادثة جديدة حتى لا تختلط محادثة الزائر بمحادثة المستخدم
+  const handleLoginSuccess = (user) => {
+    setCurrentUser(user);
+    setAuthModal(null);
+    startNewChat();
+  };
+
+  const handleLogout = () => {
+    clearSession();
+    setCurrentUser(null);
+    startNewChat();
+  };
+
   return (
     <div className={`app ${isDarkMode ? "dark-mode" : ""}`} dir="rtl">
 
@@ -347,9 +694,20 @@ function App() {
           </div>
 
           <div>
-            <h2>MaltBot</h2>
-            <p>Your Banking Assistant</p>
+            <h2>المساعد 2.0</h2>
+            <p>مساعدك البنكي</p>
           </div>
+
+          <button
+            className="sidebar-toggle"
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="إخفاء القائمة"
+            aria-expanded={true}
+            title="إخفاء القائمة"
+          >
+            ☰
+          </button>
         </div>
 
         <button className="new-chat" onClick={startNewChat}>
@@ -358,13 +716,70 @@ function App() {
         </button>
 
         <div className="history">
-          <h3>المحادثات السابقة</h3>
+          <h3>
+            {currentUser ? "محادثاتي" : "محادثات الزائر"}
+          </h3>
 
-          <div className="history-item">
-            <span className="history-title">
-              لا توجد محادثات سابقة
-            </span>
-          </div>
+          {conversations.length === 0 ? (
+            <div className="history-item history-empty">
+              <span className="history-title">
+                لا توجد محادثات سابقة
+              </span>
+            </div>
+          ) : (
+            conversations.map((conv) => (
+              <div
+                key={conv.conversation_id}
+                className={`history-row ${menuConversationId === conv.conversation_id ? "menu-open" : ""}`}
+              >
+                <button
+                  type="button"
+                  className={`history-item ${conv.conversation_id === conversationId ? "active" : ""}`}
+                  onClick={() => openConversation(conv.conversation_id)}
+                  title={conv.title}
+                >
+                  <span className="history-icon">💬</span>
+                  <span className="history-title">{conv.title}</span>
+                  <span className="history-time">
+                    {formatHistoryDate(conv.updated_at)}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className="history-menu-button"
+                  aria-label="خيارات المحادثة"
+                  aria-haspopup="menu"
+                  aria-expanded={menuConversationId === conv.conversation_id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuConversationId((prev) =>
+                      prev === conv.conversation_id ? null : conv.conversation_id
+                    );
+                  }}
+                >
+                  ⋮
+                </button>
+
+                {menuConversationId === conv.conversation_id && (
+                  <div
+                    className="history-menu"
+                    role="menu"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="history-menu-delete"
+                      onClick={() => handleDeleteConversation(conv.conversation_id)}
+                    >
+                      حذف المحادثة
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
         </div>
 
         <div className="sidebar-bottom">
@@ -401,15 +816,33 @@ function App() {
             </button>
           </div>
 
-          <button className="bottom-item">
-            <span>⚙</span>
-            الإعدادات
-          </button>
+          {currentUser ? (
+            <>
+              <div className="user-card">
+                <div className="user-avatar">
+                  {getUserAvatar(currentUser)}
+                </div>
 
-          <button className="bottom-item">
-            <span>↪</span>
-            تسجيل الخروج
-          </button>
+                <div className="user-info">
+                  <strong>{currentUser.name}</strong>
+                  <span>{currentUser.email}</span>
+                </div>
+              </div>
+
+              <button className="bottom-item" onClick={handleLogout}>
+                <span>↪</span>
+                تسجيل الخروج
+              </button>
+            </>
+          ) : (
+            <button
+              className="bottom-item login-item"
+              onClick={() => openAuthModal()}
+            >
+              <span>↩</span>
+              تسجيل الدخول
+            </button>
+          )}
         </div>
       </aside>
 
@@ -428,21 +861,24 @@ function App() {
         {/* HEADER */}
 
         <header className="chat-header">
-          <button
-            className="menu-button"
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setSidebarOpen((prev) => !prev);
-            }}
-            aria-label={sidebarOpen ? "إخفاء القائمة" : "إظهار القائمة"}
-            aria-expanded={sidebarOpen}
-          >
-            ☰
-          </button>
+          {!sidebarOpen && (
+            <button
+              className="menu-button menu-open-button"
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSidebarOpen(true);
+              }}
+              aria-label="إظهار القائمة"
+              aria-expanded={false}
+              title="إظهار القائمة"
+            >
+              ☰
+            </button>
+          )}
 
           <div className="header-info">
-            <h1>MaltBot</h1>
+            <h1>المساعد 2.0</h1>
           </div>
         </header>
 
@@ -458,46 +894,41 @@ function App() {
                 🤖
               </div>
 
-              <h2>مرحباً بك في MaltBot 👋</h2>
+              <h2>
+                {currentUser
+                  ? `مرحباً ${currentUser.name} 👋`
+                  : "مرحباً بك في المساعد 2.0 👋"}
+              </h2>
 
               <p>
-                أنا مساعدك الذكي.
-                <br />
-                اكتب سؤالك وسأساعدك.
+                {currentUser ? (
+                  <>
+                    يمكنك سؤالي عن رصيدك ومعاملاتك ومصروفاتك.
+                    <br />
+                    كيف أساعدك اليوم؟
+                  </>
+                ) : (
+                  <>
+                    أنا مساعدك الذكي.
+                    <br />
+                    اكتب سؤالك وسأساعدك.
+                  </>
+                )}
               </p>
 
               <div className="suggestions">
-
-                <button
-                  onClick={() =>
-                    setMessage(
-                      "ما هي الخدمات المصرفية المتاحة؟"
-                    )
-                  }
-                >
-                  الخدمات المصرفية
-                </button>
-
-                <button
-                  onClick={() =>
-                    setMessage(
-                      "كيف أستفسر عن حسابي؟"
-                    )
-                  }
-                >
-                  الاستفسار عن الحساب
-                </button>
-
-                <button
-                  onClick={() =>
-                    setMessage(
-                      "أريد معرفة المزيد"
-                    )
-                  }
-                >
-                  أريد معرفة المزيد
-                </button>
-
+                {(currentUser ? USER_SUGGESTIONS : GUEST_SUGGESTIONS).map(
+                  (suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => sendMessage(suggestion)}
+                      disabled={loading}
+                    >
+                      {suggestion}
+                    </button>
+                  )
+                )}
               </div>
             </div>
 
@@ -509,12 +940,28 @@ function App() {
                 className={`message-row ${item.sender}`}
               >
                 <div className="avatar">
-                  {item.sender === "assistant" ? "🤖" : "●"}
+                  {item.sender === "assistant"
+                    ? "🤖"
+                    : getUserAvatar(currentUser)}
                 </div>
 
                 <div className="message-content">
-                  <div className="message">
-                    {item.text}
+                  <div className={`message ${item.status ? "status-message" : ""}`}>
+                    {item.sender === "assistant" && !item.status ? (
+                      <FormattedMessage text={item.text} />
+                    ) : (
+                      item.text
+                    )}
+
+                    {item.loginRequired && !currentUser && (
+                      <button
+                        className="login-prompt-button"
+                        type="button"
+                        onClick={() => openAuthModal()}
+                      >
+                        تسجيل الدخول
+                      </button>
+                    )}
                   </div>
 
                   <span className="message-time">
@@ -535,7 +982,7 @@ function App() {
               <div className="message-content">
                 <div
                   className="message loading"
-                  aria-label="MaltBot يكتب..."
+                  aria-label="المساعد 2.0 يكتب..."
                 >
                   <span></span>
                   <span></span>
@@ -560,25 +1007,6 @@ function App() {
         <div className="input-area">
           <div className="input-box">
 
-            <button
-              className="attach-button"
-              type="button"
-              aria-label="إرفاق ملف"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                width="23"
-                height="23"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="m21.4 11.1-8.5 8.5a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" />
-              </svg>
-            </button>
-
             <input
               type="text"
               placeholder="اكتب رسالتك هنا..."
@@ -598,7 +1026,7 @@ function App() {
               <button
                 className="send-button"
                 type="button"
-                onClick={sendMessage}
+                onClick={() => sendMessage()}
                 disabled={loading}
                 aria-label="إرسال"
               >
@@ -620,9 +1048,11 @@ function App() {
               <button
                 className={`voice-button ${isListening ? "recording" : ""}`}
                 type="button"
-                onClick={startListening}
+                onClick={toggleListening}
                 disabled={loading}
-                aria-label="التحدث"
+                aria-label={isListening ? "إيقاف التسجيل" : "التحدث"}
+                aria-pressed={isListening}
+                title={isListening ? "اضغط لإيقاف التسجيل" : "اضغط للتحدث"}
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -645,13 +1075,32 @@ function App() {
           </div>
 
           <p className="input-note">
-            MaltBot قد يحتاج إلى التحقق من
+            المساعد 2.0 قد يحتاج إلى التحقق من
             المعلومات قبل تقديم إجابة نهائية.
           </p>
 
         </div>
 
       </main>
+
+      {pendingDeleteId && (
+        <ConfirmDialog
+          title="حذف المحادثة"
+          message="هل تريد حذف هذه المحادثة نهائياً؟ لا يمكن التراجع عن هذا الإجراء."
+          confirmLabel="حذف"
+          danger
+          onConfirm={confirmDeleteConversation}
+          onCancel={() => setPendingDeleteId(null)}
+        />
+      )}
+
+      {authModal && (
+        <AuthModal
+          notice={authModal.notice}
+          onClose={() => setAuthModal(null)}
+          onSuccess={handleLoginSuccess}
+        />
+      )}
     </div>
   );
 }

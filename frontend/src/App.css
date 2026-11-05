@@ -898,26 +898,6 @@ button {
     box-shadow: 0 0 0 4px rgba(180, 35, 50, 0.14);
 }
 
-.attach-button {
-    width: 44px;
-    height: 44px;
-    min-width: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    border-radius: 14px;
-    background: transparent;
-    color: #64756e;
-    font-size: 23px;
-    transition: background 0.2s ease, color 0.2s ease;
-}
-
-.attach-button:hover {
-    background: #edf5f1;
-    color: #147d68;
-}
-
 .send-button:disabled {
     opacity: 0.45;
     cursor: not-allowed;
@@ -934,15 +914,6 @@ button {
 
 .app.dark-mode .voice-button:hover {
     background: #304a48;
-}
-
-.app.dark-mode .attach-button {
-    color: #bdc9c7;
-}
-
-.app.dark-mode .attach-button:hover {
-    background: #263b3b;
-    color: #a7e3ce;
 }
 
 .app.dark-mode .send-button {
@@ -1325,37 +1296,7 @@ button {
     background: #d5e9df;
 }
 
-.attach-button {
-    width: 40px;
-    height: 44px;
-    min-width: 40px;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    color: #64756e;
-    background: transparent;
-    border: none;
-    border-radius: 12px;
-    cursor: pointer;
-}
-
-.attach-button:hover {
-    background: #edf5f1;
-    color: #147d68;
-}
-
 .app.dark-mode .voice-button {
-    background: #263b3b;
-    color: #a7e3ce;
-}
-
-.app.dark-mode .attach-button {
-    color: #bdc9c7;
-}
-
-.app.dark-mode .attach-button:hover {
     background: #263b3b;
     color: #a7e3ce;
 }
@@ -1573,4 +1514,381 @@ button {
     .chat-header {
         justify-content: flex-end;
     }
+}
+
+/* ================= CONVERSATION HISTORY (scrollable) ================= */
+
+.history {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    margin-bottom: 12px;
+}
+
+.history-empty {
+    cursor: default;
+}
+
+.history-empty:hover {
+    background: transparent;
+    border-color: transparent;
+}
+
+/* على الشاشات الكبيرة: القائمة الجانبية ثابتة بارتفاع الشاشة حتى تتمرر المحادثات داخلها */
+@media (min-width: 701px) {
+    .sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+    }
+}
+
+/* ================= عنوان المساعد 2.0 ================= */
+
+/* العنوان عربي، لذلك يُعرض من اليمين لليسار */
+.header-info h1 {
+    direction: rtl;
+}
+
+/* الوضع الليلي: عنوان الهيدر بجانب زر القائمة باللون الأبيض */
+.app.dark-mode .header-info h1 {
+    color: #ffffff;
+}
+
+/* ================= CONVERSATION OPTIONS (⋮) ================= */
+
+.history-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.history-row .history-item {
+    flex: 1;
+    min-width: 0;
+    padding-left: 36px;
+}
+
+.history-menu-button {
+    position: absolute;
+    left: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #7a898d;
+    font-size: 18px;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+/* يظهر الزر عند المرور على المحادثة أو عند فتح القائمة، ودائماً على الشاشات اللمسية */
+.history-row:hover .history-menu-button,
+.history-row.menu-open .history-menu-button,
+.history-menu-button:focus-visible {
+    opacity: 1;
+}
+
+@media (hover: none) {
+    .history-menu-button {
+        opacity: 1;
+    }
+}
+
+.history-menu-button:hover {
+    background: #e3efe9;
+    color: #10765e;
+}
+
+.history-menu {
+    position: absolute;
+    left: 6px;
+    top: calc(100% - 4px);
+    z-index: 20;
+    min-width: 160px;
+    padding: 6px;
+    background: #ffffff;
+    border: 1px solid #e5ece9;
+    border-radius: 12px;
+    box-shadow: 0 10px 28px rgba(20, 50, 44, 0.14);
+}
+
+.history-menu-delete {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    color: #c62828;
+    font-size: 13.5px;
+    font-weight: 600;
+    text-align: right;
+}
+
+.history-menu-delete:hover {
+    background: #fff1f1;
+}
+
+.app.dark-mode .history-menu-button {
+    color: #aab6c5;
+}
+
+.app.dark-mode .history-menu-button:hover {
+    background: #263442;
+    color: #ffffff;
+}
+
+.app.dark-mode .history-menu {
+    background: #202c3b;
+    border-color: #374151;
+}
+
+.app.dark-mode .history-menu-delete {
+    color: #fca5a5;
+}
+
+.app.dark-mode .history-menu-delete:hover {
+    background: #3b1d22;
+}
+
+/* اقتراحات البداية أثناء التحميل */
+.suggestions button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+/* ================= SIDEBAR TOGGLE (attached to the sidebar) ================= */
+
+.brand {
+    align-items: center;
+}
+
+.sidebar-toggle {
+    margin-inline-start: auto;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 12px;
+    background: #eff7f2;
+    color: #147d68;
+    font-size: 20px;
+    line-height: 1;
+    transition: background 0.18s ease;
+}
+
+.sidebar-toggle:hover {
+    background: #e1f0e8;
+}
+
+.app.dark-mode .sidebar-toggle {
+    background: #263b3b;
+    color: #a7e3ce;
+}
+
+.app.dark-mode .sidebar-toggle:hover {
+    background: #304a45;
+}
+
+/* زر فتح القائمة عندما تكون مغلقة: ثلاث خطوط فقط بدون إطار */
+.menu-button.menu-open-button,
+.menu-button.menu-open-button:hover,
+.menu-button.menu-open-button:active {
+    width: 40px;
+    height: 40px;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    transform: none;
+    color: #147d68;
+    font-size: 28px;
+    line-height: 1;
+}
+
+.menu-button.menu-open-button:hover {
+    color: #0d6555;
+}
+
+.app.dark-mode .menu-button.menu-open-button,
+.app.dark-mode .menu-button.menu-open-button:hover {
+    background: transparent;
+    box-shadow: none;
+    color: #ffffff;
+}
+
+/* ================= LOCAL STATUS MESSAGES ================= */
+
+.message.status-message {
+    font-size: 14px;
+    color: #4a6b60;
+    background: #f1f8f4;
+    border: 1px dashed #cfe5da;
+}
+
+.app.dark-mode .message.status-message {
+    color: #b7f0dc !important;
+    background: #1d302f !important;
+    border-color: #2f5249;
+}
+
+/* ================= LOGIN BUTTON INSIDE THE MESSAGE ================= */
+
+.message .login-prompt-button {
+    display: flex;
+    margin-top: 12px;
+}
+
+/* ================= AVATARS ================= */
+
+.user-avatar {
+    font-size: 22px;
+    background: #eff7f2;
+}
+
+.message-row.user .avatar {
+    font-size: 26px;
+}
+
+.app.dark-mode .user-avatar {
+    background: #263b3b;
+}
+
+/* ================= CONFIRM DIALOG ================= */
+
+.confirm-card {
+    width: min(100%, 400px);
+    padding: 28px 26px 22px;
+    text-align: center;
+}
+
+.confirm-title {
+    margin: 0 0 10px;
+    color: #073f35;
+    font-size: 21px;
+}
+
+.confirm-message {
+    margin: 0 0 22px;
+    color: #617169;
+    font-size: 15px;
+    line-height: 1.7;
+}
+
+.confirm-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.confirm-actions button {
+    flex: 1;
+    height: 46px;
+    border-radius: 13px;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.confirm-ok {
+    border: none;
+    background: #087a5e;
+    color: #ffffff;
+}
+
+.confirm-ok:hover {
+    background: #066b53;
+}
+
+.confirm-ok.danger {
+    background: #c62828;
+}
+
+.confirm-ok.danger:hover {
+    background: #a91f1f;
+}
+
+.confirm-cancel {
+    border: 1px solid #e1e8e5;
+    background: #ffffff;
+    color: #192b32;
+}
+
+.confirm-cancel:hover {
+    background: #f4f7f6;
+}
+
+.app.dark-mode .confirm-title {
+    color: #e5e7eb;
+}
+
+.app.dark-mode .confirm-message {
+    color: #aab6c5;
+}
+
+.app.dark-mode .confirm-cancel {
+    background: #202c3b;
+    border-color: #374151;
+    color: #e5e7eb;
+}
+
+/* ================= FORMATTED ASSISTANT REPLIES ================= */
+
+.formatted-message {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fm-paragraph,
+.fm-heading {
+    margin: 0;
+}
+
+/* عناوين الأقسام مثل "تفاصيل المصروفات:" */
+.fm-heading {
+    margin-top: 6px;
+    font-weight: 700;
+    color: #0d6555;
+}
+
+.formatted-message > .fm-heading:first-child {
+    margin-top: 0;
+}
+
+.fm-list {
+    margin: 0;
+    padding: 0 22px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.fm-list li {
+    padding-right: 4px;
+}
+
+.fm-list li::marker {
+    color: #147d68;
+}
+
+.formatted-message strong {
+    font-weight: 700;
+    color: #0b4f43;
+}
+
+.app.dark-mode .fm-heading,
+.app.dark-mode .formatted-message strong {
+    color: #7fe0c0;
+}
+
+.app.dark-mode .fm-list li::marker {
+    color: #5fd3b0;
 }

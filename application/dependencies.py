@@ -48,7 +48,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 
         cursor.execute(
             """
-            SELECT id, name, email, is_active
+            SELECT id, name, email, is_active, gender
             FROM users
             WHERE id = ?
             """,
@@ -67,7 +67,23 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
                 status_code=status.HTTP_403_FORBIDDEN, detail="Account is inactive."
             )
 
-        return {"id": user[0], "name": user[1], "email": user[2]}
+        return {"id": user[0], "name": user[1], "email": user[2], "gender": user[4]}
 
     finally:
         connection.close()
+
+
+def get_optional_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """
+    Optional authentication for endpoints open to guests (e.g. /chat).
+
+    - No Authorization header  -> None (guest).
+    - Token present            -> validated exactly like get_current_user,
+                                  so invalid/expired tokens still return 401
+                                  and inactive users still return 403.
+    """
+
+    if credentials is None:
+        return None
+
+    return get_current_user(credentials)

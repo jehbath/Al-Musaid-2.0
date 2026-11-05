@@ -5,6 +5,10 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 
+# Owner of conversations created before authentication existed (demo user Mohamed)
+LEGACY_CONVERSATIONS_OWNER_ID = 1
+
+
 class ConversationMemory:
 
     def __init__(self, db_path=None):
@@ -46,10 +50,44 @@ class ConversationMemory:
                 CREATE TABLE IF NOT EXISTS conversations (
 
                     conversation_id TEXT PRIMARY KEY,
+                    user_id INTEGER,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
 
                 )
+            """)
+
+            # Conversation ownership: user_id = owner, NULL = guest conversation
+            conversation_columns = [
+                column["name"]
+                for column in connection.execute(
+                    "PRAGMA table_info(conversations)"
+                ).fetchall()
+            ]
+
+            if "user_id" not in conversation_columns:
+
+                connection.execute("""
+                    ALTER TABLE conversations
+                    ADD COLUMN user_id INTEGER
+                """)
+
+                # One-time migration: conversations created before
+                # authentication were test conversations of the demo
+                # user Mohamed (ID=1), so they are assigned to him and
+                # are never treated as public guest conversations.
+                connection.execute(
+                    "UPDATE conversations SET user_id = ? WHERE user_id IS NULL",
+                    (LEGACY_CONVERSATIONS_OWNER_ID,),
+                )
+
+                print("Conversations migrated: legacy conversations assigned to user 1.")
+
+            connection.execute("""
+                CREATE INDEX IF NOT EXISTS
+                idx_conversations_user
+
+                ON conversations(user_id, updated_at)
             """)
 
             connection.execute("""
@@ -137,6 +175,143 @@ class ConversationMemory:
                     ADD COLUMN last_summarized_message_id
                     INTEGER NOT NULL DEFAULT 0
                 """)
+
+    # --------------------------------------------------
+    # Conversation ownership
+    # --------------------------------------------------
+
+    def claim_or_verify_conversation(self, conversation_id, user_id):
+        """
+        Ensure the conversation belongs to the current requester.
+
+        - New conversation      -> created and owned by user_id
+                                   (None = guest conversation).
+        - Existing conversation -> allowed only if the owner matches:
+                                   a user only their own conversations,
+                                   a guest only guest conversations.
+
+        Returns True if access is allowed.
+        """
+
+        if not conversation_id:
+            return False
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        with self._get_connection() as connection:
+
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO conversations (
+                    conversation_id,
+                    user_id,
+                    created_at,
+                    updated_at
+                )
+
+                VALUES (?, ?, ?, ?)
+                """,
+                (conversation_id, user_id, now, now),
+            )
+
+            row = connection.execute(
+                "SELECT user_id FROM conversations WHERE conversation_id = ?",
+                (conversation_id,),
+            ).fetchone()
+
+        return row is not None and row["user_id"] == user_id
+
+    def can_access_conversation(self, conversation_id, user_id):
+        """Read-only ownership check (does not create the conversation)."""
+
+        with self._get_connection() as connection:
+
+            row = connection.execute(
+                "SELECT user_id FROM conversations WHERE conversation_id = ?",
+                (conversation_id,),
+            ).fetchone()
+
+        return row is not None and row["user_id"] == user_id
+
+    def list_user_conversations(self, user_id, limit=50):
+        """List an authenticated user's conversations that contain messages."""
+
+        if user_id is None:
+            return []
+
+        with self._get_connection() as connection:
+
+            rows = connection.execute(
+                """
+                SELECT
+                    c.conversation_id,
+                    c.updated_at,
+                    (
+                        SELECT m.content
+                        FROM messages m
+                        WHERE m.conversation_id = c.conversation_id
+                        AND m.role = 'user'
+                        ORDER BY m.id
+                        LIMIT 1
+                    ) AS title
+
+                FROM conversations c
+
+                WHERE c.user_id = ?
+                AND EXISTS (
+                    SELECT 1 FROM messages m
+                    WHERE m.conversation_id = c.conversation_id
+                )
+
+                ORDER BY c.updated_at DESC
+
+                LIMIT ?
+                """,
+                (user_id, max(1, int(limit))),
+            ).fetchall()
+
+        return [
+            {
+                "conversation_id": row["conversation_id"],
+                "title": row["title"] or "محادثة",
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        ]
+
+    def delete_conversation(self, conversation_id):
+        """
+        Delete a conversation and all its data (ownership checked by caller).
+
+        messages, locations, state and summaries are removed through
+        ON DELETE CASCADE (foreign keys are enabled on every connection).
+        """
+
+        with self._get_connection() as connection:
+
+            cursor = connection.execute(
+                "DELETE FROM conversations WHERE conversation_id = ?",
+                (conversation_id,),
+            )
+
+        return cursor.rowcount > 0
+
+    def get_conversation_messages(self, conversation_id):
+        """Return all messages of a conversation (ownership checked by caller)."""
+
+        with self._get_connection() as connection:
+
+            rows = connection.execute(
+                """
+                SELECT id, role, content, created_at
+                FROM messages
+                WHERE conversation_id = ?
+                ORDER BY id
+                """,
+                (conversation_id,),
+            ).fetchall()
+
+        return [dict(row) for row in rows]
 
     # Get recent conversation messages
     def get_recent_messages(

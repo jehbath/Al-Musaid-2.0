@@ -2,6 +2,9 @@ import json
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+# Environment variable used to pass the authenticated user ID to MCP servers.
+USER_ID_ENV_VAR = "AL_MUSAID_USER_ID"
+
 # Maps each MCP server to its Python module.
 SERVER_MODULES = {
     "core_banking": "mcp_servers.core_banking.server",
@@ -38,8 +41,14 @@ class MCPClientManager:
 
                 return tools.tools
 
-    async def call_tool(self, tool_name, arguments=None):
-        """Call a tool using the tool registry."""
+    async def call_tool(self, tool_name, arguments=None, user_id=None):
+        """
+        Call a tool using the tool registry.
+
+        user_id is the trusted ID from the backend (validated JWT).
+        It is passed to the MCP server through an environment variable,
+        never through the tool arguments, so Gemini cannot control it.
+        """
 
         if not self.tool_registry:
             await self.build_tool_registry()
@@ -51,9 +60,15 @@ class MCPClientManager:
 
         server_module = self.server_modules[server_name]
 
+        env = {}
+
+        if user_id is not None:
+            env[USER_ID_ENV_VAR] = str(int(user_id))
+
         server_params = StdioServerParameters(
             command="python",
             args=["-m", server_module],
+            env=env,
         )
 
         async with stdio_client(server_params) as (read, write):

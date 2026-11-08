@@ -1892,3 +1892,60 @@ button {
 .app.dark-mode .fm-list li::marker {
     color: #5fd3b0;
 }
+
+
+/* ================= LOCATION CARD (map preview + Google Maps) ================= */
+
+.location-card {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 320px;
+}
+
+.location-map {
+    position: relative;
+    display: block;
+    height: 150px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+}
+
+.location-map iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    pointer-events: none;
+}
+
+.location-map-overlay {
+    position: absolute;
+    inset: 0;
+    cursor: pointer;
+}
+
+.location-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 38px;
+    padding: 0 16px;
+    border-radius: 11px;
+    background: #087a5e;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    box-shadow: 0 5px 12px rgba(8, 122, 94, 0.15);
+}
+
+.location-button:hover {
+    background: #066b53;
+}
+
+.app.dark-mode .location-map {
+    border-color: #2f4646;
+}

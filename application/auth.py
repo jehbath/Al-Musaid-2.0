@@ -2,8 +2,6 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from database.database import get_connection
 from application.security import verify_password, create_access_token
-from fastapi import Depends
-from application.dependencies import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -62,9 +60,3 @@ def login(request: LoginRequest):
 
     finally:
         connection.close()
-
-
-@router.get("/me")
-def get_me(current_user: dict = Depends(get_current_user)):
-
-    return {"success": True, "user": current_user}

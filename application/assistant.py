@@ -28,7 +28,16 @@ CATEGORY_LABELS = {
     "transfer": "التحويلات",
 }
 
-CURRENCY_LABELS = {"SAR": "ريال", "USD": "دولار", "EUR": "يورو", "GBP": "جنيه إسترليني"}
+CURRENCY_LABELS = {
+    "SDG": "جنيه سوداني",
+    "SAR": "ريال",
+    "USD": "دولار",
+    "EUR": "يورو",
+    "GBP": "جنيه إسترليني",
+}
+
+# Default currency of the demo bank (Faisal Islamic Bank, Sudan)
+DEFAULT_CURRENCY = "SDG"
 
 LOGIN_REQUIRED_MESSAGE = (
     "للوصول إلى بياناتك المصرفية الشخصية (الرصيد، المعاملات، تحليل المصروفات) "
@@ -127,6 +136,39 @@ class Assistant:
     # Helper: Remember tool results for follow-up calculations
     # --------------------------------------------------
 
+    # --------------------------------------------------
+    # Helper: Location cards (map preview + Google Maps link)
+    # --------------------------------------------------
+
+    @staticmethod
+    def _extract_location(tool_name, tool_result):
+        """Return a location card for branch/ATM results, or None."""
+
+        if not isinstance(tool_result, dict) or not tool_result.get("success"):
+            return None
+
+        kinds = {"find_nearest_branch": ("branch", "branch"), "find_nearest_atm": ("atm", "atm")}
+
+        if tool_name not in kinds:
+            return None
+
+        key, kind = kinds[tool_name]
+        place = tool_result.get(key) or {}
+        lat, lng = place.get("latitude"), place.get("longitude")
+
+        if lat is None or lng is None:
+            return None
+
+        return {
+            "type": kind,
+            "name": place.get("name"),
+            "address": place.get("address"),
+            "latitude": lat,
+            "longitude": lng,
+            "distance_km": place.get("distance_km"),
+            "maps_url": f"https://www.google.com/maps/search/?api=1&query={lat},{lng}",
+        }
+
     def _remember_tool_result(self, conversation_id, tool_name, tool_result):
 
         if not isinstance(tool_result, dict) or not tool_result.get("success"):
@@ -136,7 +178,7 @@ class Assistant:
 
         if tool_name == "get_account_balance":
 
-            currency = tool_result.get("currency", "SAR")
+            currency = tool_result.get("currency", DEFAULT_CURRENCY)
 
             updates["account_balance"] = {
                 "amount": tool_result["balance"],
@@ -158,11 +200,11 @@ class Assistant:
                     item["category"]: item["total"]
                     for item in tool_result.get("spending_by_category", [])
                 },
-                "currency": "SAR",
+                "currency": DEFAULT_CURRENCY,
             }
             updates["last_amount"] = {
                 "amount": tool_result.get("total_spending", 0),
-                "currency": "SAR",
+                "currency": DEFAULT_CURRENCY,
                 "label": "إجمالي مصروفاتك",
             }
 
@@ -201,7 +243,7 @@ class Assistant:
                 }
 
             base_amount = account_balance.get("amount")
-            currency = account_balance.get("currency", "SAR")
+            currency = account_balance.get("currency", DEFAULT_CURRENCY)
             base_label = "رصيد حسابك"
 
         elif reference == "calculation":
@@ -215,7 +257,7 @@ class Assistant:
                 }
 
             base_amount = calculation.get("current_amount")
-            currency = calculation.get("currency", "SAR")
+            currency = calculation.get("currency", DEFAULT_CURRENCY)
             base_label = "ناتج العملية السابقة"
 
         elif reference in ("spending_total", "spending_category"):
@@ -233,7 +275,7 @@ class Assistant:
                     ),
                 }
 
-            currency = analysis.get("currency", "SAR")
+            currency = analysis.get("currency", DEFAULT_CURRENCY)
 
             if reference == "spending_total":
 
@@ -268,19 +310,19 @@ class Assistant:
             if last_amount:
 
                 base_amount = last_amount.get("amount")
-                currency = last_amount.get("currency", "SAR")
+                currency = last_amount.get("currency", DEFAULT_CURRENCY)
                 base_label = last_amount.get("label") or "المبلغ السابق"
 
             elif calculation:
 
                 base_amount = calculation.get("current_amount")
-                currency = calculation.get("currency", "SAR")
+                currency = calculation.get("currency", DEFAULT_CURRENCY)
                 base_label = "ناتج العملية السابقة"
 
             elif account_balance:
 
                 base_amount = account_balance.get("amount")
-                currency = account_balance.get("currency", "SAR")
+                currency = account_balance.get("currency", DEFAULT_CURRENCY)
                 base_label = "رصيد حسابك"
 
             else:
@@ -838,10 +880,21 @@ class Assistant:
                 final_response,
             )
 
-            return {
-                "success": True,
-                "response": final_response,
-            }
+            locations = [
+                card
+                for card in (
+                    self._extract_location(item["tool_name"], item["result"])
+                    for item in tool_results
+                )
+                if card
+            ]
+
+            response = {"success": True, "response": final_response}
+
+            if locations:
+                response["locations"] = locations
+
+            return response
 
         # --------------------------------------------------
         # 11. Single MCP tool
@@ -898,10 +951,14 @@ class Assistant:
                 final_response,
             )
 
-            return {
-                "success": True,
-                "response": final_response,
-            }
+            response = {"success": True, "response": final_response}
+
+            card = self._extract_location(tool_name, tool_result)
+
+            if card:
+                response["locations"] = [card]
+
+            return response
 
         # --------------------------------------------------
         # 12. Direct response

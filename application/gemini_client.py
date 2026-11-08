@@ -84,9 +84,14 @@ Write clean, easy-to-scan replies:
 5. You may wrap key amounts or totals in **double asterisks** for bold.
    Do not bold whole sentences. No other markdown (no #, no tables, no code).
 6. Keep each bullet short: label then value, e.g.
-   - المطاعم: **675.00 ريال** (27%)
+   - المطاعم: **33,750 جنيه** (27%)
 7. Short answers (one fact, greeting, refusal) stay as 1-2 plain lines.
 8. End with at most one short line offering more help.
+9. Keep proper names (bank, branch, ATM and merchant names) exactly as they
+   appear in the results. Do not translate or transliterate them.
+10. When showing an exchange rate, always write it in the direction returned
+    by the tool: "1 <from_currency> = <rate> <to_currency>"
+    (e.g. 1 جنيه سوداني = 0.0016635 دولار). Never invert it.
 """
 
 
@@ -106,8 +111,10 @@ When relevant to the question, present briefly and clearly:
    increased or decreased the most (with amounts and percentages).
 5. Saving advice (when the user asks how to save, or asks for an
    analysis): use saving_opportunities and total_potential_saving,
-   e.g. reducing restaurants by 20% saves X SAR. Give 2-3 practical,
+   e.g. reducing restaurants by 20% saves X SDG. Give 2-3 practical,
    specific tips based on the user's actual top categories.
+
+Write SDG amounts as "جنيه سوداني" (or "جنيه") and USD as "دولار".
 
 Translate category keys to Arabic (restaurant=المطاعم, groceries=البقالة,
 shopping=التسوق, bills=الفواتير, transport=المواصلات, health=الصحة,
@@ -658,7 +665,7 @@ the required data.
 3. CURRENCY CONVERSION:
 
 "حول رصيدي إلى دولار."
-"كم يساوي 3500 ريال بالدولار؟"
+"كم يساوي 175000 جنيه بالدولار؟"
 "حول المبلغ السابق إلى جنيه استرليني."
 
 Use convert_currency.

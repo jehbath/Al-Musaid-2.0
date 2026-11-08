@@ -140,11 +140,31 @@ def migrate_users_table():
         connection.close()
 
 
+# --------------------------------------------------
+# Sudanese demo context (Faisal Islamic Bank, SDG)
+# --------------------------------------------------
+
+DEMO_CURRENCY = "SDG"
+
+# Seed amounts are written in compact units and multiplied by this scale when
+# inserted, giving realistic Sudanese Pound (SDG) values.
+DEMO_AMOUNT_SCALE = 50
+
+# Earlier Saudi demo names -> Sudanese demo names (used to convert existing rows)
+SUDAN_MERCHANT_NAMES = {'Panda': 'Al Waha Supermarket', 'Carrefour': 'Afra Hypermarket', 'Tamimi Markets': 'Souq Al Arabi Grocery', 'Othaim Markets': 'Bahri Central Market', 'Lulu Hypermarket': 'Omdurman Grand Market', 'Danube': 'Kafouri Supermarket', 'Al Baik': 'Al Basha Restaurant', 'Starbucks': 'Ozone Cafe', 'Restaurant A': 'Al Housh Restaurant', 'Restaurant B': 'Papa Costa', 'Herfy': 'Kebab Express', 'Kudu': 'Tasty Burger', 'Dunkin': 'Sweet Corner Cafe', 'Miramar Restaurant': 'Nile View Restaurant', 'Nozomi': 'Corinthia Hotel Restaurant', 'Saudi Electricity': 'Sudanese Electricity Distribution Co.', 'National Water Company': 'Khartoum State Water Corporation', 'STC': 'Zain Sudan', 'Mobily': 'MTN Sudan', 'Noon': 'Khartoum Online Store', 'Zara': 'Afra Mall Fashion', 'Sephora': 'Beauty Corner', 'Nahdi Pharmacy': 'Al Shifa Pharmacy', 'SASCO': 'Nile Petroleum Station', 'VOX Cinemas': 'Al Waha Cinema', 'Uber': 'Tirhal', 'Careem': 'Tirhal', 'Jarir Bookstore': 'Al Dar Al Sudania Bookstore', 'Saudia Airlines': 'Tarco Airlines', 'Dr. Sulaiman Al Habib Hospital': 'Royal Care Hospital', 'Saudi Aramco': 'Sudapet', 'King Faisal Specialist Hospital': 'Ibn Sina Hospital', 'SABIC': 'Kenana Sugar Company', 'Fahad Trading Group': 'Al Fahad Trading Group', 'Employer B': 'Telecom Company'}
+
+
 def insert_transaction(cursor, transaction):
     """
     Insert a transaction only if the same transaction
-    does not already exist.
+    does not already exist. The amount is scaled to SDG (DEMO_AMOUNT_SCALE).
     """
+
+    transaction = (
+        *transaction[:3],
+        round(float(transaction[3]) * DEMO_AMOUNT_SCALE, 2),
+        *transaction[4:],
+    )
 
     cursor.execute(
         """
@@ -203,10 +223,10 @@ def insert_sample_data():
         VALUES (
             1,
             1,
-            'SA123456789',
+            'SD123456789',
             'checking',
-            3500.00,
-            'SAR'
+            175000.00,
+            'SDG'
         )
     """)
 
@@ -218,7 +238,7 @@ def insert_sample_data():
             "debit",
             150.00,
             "groceries",
-            "Carrefour",
+            "Afra Hypermarket",
             "Grocery shopping",
         ),
         (
@@ -227,7 +247,7 @@ def insert_sample_data():
             "debit",
             80.00,
             "restaurant",
-            "Restaurant A",
+            "Al Housh Restaurant",
             "Dinner",
         ),
         (
@@ -260,7 +280,7 @@ def insert_july_data():
             "debit",
             100.00,
             "groceries",
-            "Carrefour",
+            "Afra Hypermarket",
             "Grocery shopping",
         ),
         (
@@ -269,7 +289,7 @@ def insert_july_data():
             "debit",
             50.00,
             "restaurant",
-            "Restaurant B",
+            "Papa Costa",
             "Dinner",
         ),
     ]
@@ -281,94 +301,94 @@ def insert_july_data():
     connection.close()
 
 
+# Faisal Islamic Bank (Sudan) demo branches and ATMs.
+# Branch/ATM names are taken from the bank's published annual reports (2013-2014);
+# coordinates are APPROXIMATE (centre of each area) and are for testing only.
+FIB_BRANCHES = [
+    ("Faisal Islamic Bank - Al Faihaa Main Branch", 15.6030, 32.5300, "Al Faihaa Building, Ali Abdel Latif Street, Khartoum"),
+    ("Faisal Islamic Bank - Khartoum Central Station Branch", 15.5975, 32.5320, "Central Station area, Khartoum"),
+    ("Faisal Islamic Bank - Helat Koko Branch", 15.6330, 32.6010, "Helat Koko, Khartoum North (Bahri)"),
+    ("Faisal Islamic Bank - Khartoum North Industrial Area Branch", 15.6480, 32.5420, "Industrial Area, Khartoum North (Bahri)"),
+    ("Faisal Islamic Bank - Omdurman Central Station Branch", 15.6445, 32.4790, "Central Station, Omdurman"),
+    ("Faisal Islamic Bank - Souq Libya Branch", 15.6560, 32.4310, "Souq Libya, Omdurman"),
+    ("Faisal Islamic Bank - Alsouq Alshaabi Branch", 15.6240, 32.4700, "Alsouq Alshaabi, Omdurman"),
+    ("Faisal Islamic Bank - Almawrada Branch", 15.6290, 32.4920, "Almawrada, Omdurman"),
+]
+
+FIB_ATMS = [
+    ("Faisal Islamic Bank ATM - Al Faihaa", 15.6032, 32.5305, "Al Faihaa Building, Khartoum"),
+    ("Faisal Islamic Bank ATM - Khartoum Central Station", 15.5978, 32.5325, "Central Station area, Khartoum"),
+    ("Faisal Islamic Bank ATM - Omdurman Almawrada Branch", 15.6292, 32.4925, "Almawrada, Omdurman"),
+    ("Faisal Islamic Bank ATM - Omdurman Central Station Branch", 15.6447, 32.4795, "Central Station, Omdurman"),
+    ("Faisal Islamic Bank ATM - Omdurman Souq Libya Branch", 15.6562, 32.4315, "Souq Libya, Omdurman"),
+    ("Faisal Islamic Bank ATM - Althawra Al Romee Station", 15.6900, 32.4700, "Althawra, Omdurman"),
+]
+
+
 def insert_location_data():
+    """Replace the demo branches/ATMs with Faisal Islamic Bank (Sudan) locations."""
+
     connection = get_connection()
-    cursor = connection.cursor()
 
-    # Branches
-    branches = [
-        (
-            "Al Riyadh Main Branch",
-            24.7136,
-            46.6753,
-            "King Fahd Road, Riyadh",
-        ),
-        (
-            "Olaya Branch",
-            24.6900,
-            46.6850,
-            "Olaya Street, Riyadh",
-        ),
-        (
-            "Al Malaz Branch",
-            24.6750,
-            46.7200,
-            "Al Malaz, Riyadh",
-        ),
-    ]
+    try:
+        cursor = connection.cursor()
 
-    for branch in branches:
-        cursor.execute(
-            """
-            SELECT id FROM branches
-            WHERE name = ?
-            """,
-            (branch[0],),
-        )
+        for table, rows in (("branches", FIB_BRANCHES), ("atms", FIB_ATMS)):
+            names = [row[0] for row in rows]
+            placeholders = ", ".join("?" for _ in names)
 
-        if cursor.fetchone() is None:
+            # Remove earlier demo locations (e.g. the previous Riyadh data)
+            cursor.execute(f"DELETE FROM {table} WHERE name NOT IN ({placeholders})", names)
+
+            for row in rows:
+                cursor.execute(f"SELECT id FROM {table} WHERE name = ?", (row[0],))
+
+                if cursor.fetchone() is None:
+                    cursor.execute(
+                        f"INSERT INTO {table} (name, latitude, longitude, address) VALUES (?, ?, ?, ?)",
+                        row,
+                    )
+
+        connection.commit()
+
+    finally:
+        connection.close()
+
+
+def convert_demo_data_to_sudan():
+    """
+    One-time conversion of existing demo rows to the Sudanese context:
+    SAR accounts -> SDG (amounts x DEMO_AMOUNT_SCALE) and Saudi merchant names -> Sudanese.
+    Safe to run multiple times (only SAR accounts are converted).
+    """
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("SELECT id FROM accounts WHERE currency = 'SAR'")
+        sar_accounts = [row[0] for row in cursor.fetchall()]
+
+        if sar_accounts:
+            placeholders = ", ".join("?" for _ in sar_accounts)
             cursor.execute(
-                """
-                INSERT INTO branches
-                (name, latitude, longitude, address)
-                VALUES (?, ?, ?, ?)
-                """,
-                branch,
+                f"UPDATE transactions SET amount = ROUND(amount * ?, 2) WHERE account_id IN ({placeholders})",
+                [DEMO_AMOUNT_SCALE, *sar_accounts],
+            )
+            cursor.execute(
+                f"UPDATE accounts SET balance = ROUND(balance * ?, 2), currency = ? WHERE id IN ({placeholders})",
+                [DEMO_AMOUNT_SCALE, DEMO_CURRENCY, *sar_accounts],
             )
 
-    # ATMs
-    atms = [
-        (
-            "ATM - King Fahd Road",
-            24.7100,
-            46.6800,
-            "King Fahd Road, Riyadh",
-        ),
-        (
-            "ATM - Olaya",
-            24.6920,
-            46.6870,
-            "Olaya Street, Riyadh",
-        ),
-        (
-            "ATM - Al Malaz",
-            24.6730,
-            46.7180,
-            "Al Malaz, Riyadh",
-        ),
-    ]
+        for old, new in SUDAN_MERCHANT_NAMES.items():
+            cursor.execute("UPDATE transactions SET merchant = ? WHERE merchant = ?", (new, old))
 
-    for atm in atms:
-        cursor.execute(
-            """
-            SELECT id FROM atms
-            WHERE name = ?
-            """,
-            (atm[0],),
-        )
+        connection.commit()
+        print(f"Converted {len(sar_accounts)} SAR accounts to {DEMO_CURRENCY}.")
 
-        if cursor.fetchone() is None:
-            cursor.execute(
-                """
-                INSERT INTO atms
-                (name, latitude, longitude, address)
-                VALUES (?, ?, ?, ?)
-                """,
-                atm,
-            )
-
-    connection.commit()
-    connection.close()
+    finally:
+        connection.close()
 
 
 # --------------------------------------------------
@@ -385,21 +405,21 @@ DEMO_PASSWORDS = {
 # Deliberately different from Mohamed's data to test isolation.
 AHMED_ACCOUNT = {
     "email": "ahmed@example.com",
-    "account_number": "SA555000111",
+    "account_number": "SD555000111",
     "account_type": "checking",
-    "balance": 12750.50,
-    "currency": "SAR",
+    "balance": 637525.00,
+    "currency": "SDG",
 }
 
 AHMED_TRANSACTIONS = [
-    ("2026-07-01", "credit", 8000.00, "salary", "Employer B", "Monthly salary"),
-    ("2026-07-05", "debit", 260.00, "groceries", "Panda", "Grocery shopping"),
-    ("2026-07-15", "debit", 140.00, "restaurant", "Starbucks", "Coffee"),
-    ("2026-08-01", "credit", 8000.00, "salary", "Employer B", "Monthly salary"),
-    ("2026-08-04", "debit", 220.00, "restaurant", "Al Baik", "Dinner"),
-    ("2026-08-06", "debit", 340.00, "groceries", "Panda", "Grocery shopping"),
-    ("2026-08-09", "debit", 1200.00, "shopping", "Jarir Bookstore", "Laptop accessories"),
-    ("2026-08-12", "debit", 95.00, "transport", "Uber", "Ride"),
+    ("2026-07-01", "credit", 8000.00, "salary", "Telecom Company", "Monthly salary"),
+    ("2026-07-05", "debit", 260.00, "groceries", "Al Waha Supermarket", "Grocery shopping"),
+    ("2026-07-15", "debit", 140.00, "restaurant", "Ozone Cafe", "Coffee"),
+    ("2026-08-01", "credit", 8000.00, "salary", "Telecom Company", "Monthly salary"),
+    ("2026-08-04", "debit", 220.00, "restaurant", "Al Basha Restaurant", "Dinner"),
+    ("2026-08-06", "debit", 340.00, "groceries", "Al Waha Supermarket", "Grocery shopping"),
+    ("2026-08-09", "debit", 1200.00, "shopping", "Al Dar Al Sudania Bookstore", "Laptop accessories"),
+    ("2026-08-12", "debit", 95.00, "transport", "Tirhal", "Ride"),
 ]
 
 
@@ -505,89 +525,89 @@ DEMO_MONTHS = ["2026-08", "2026-09", "2026-10"]
 DEMO_CUSTOMERS = [
     {
         "name": "Sara", "email": "sara@example.com", "active": True, "gender": "female",
-        "accounts": [("SA100000001", "checking", 9840.75)],
+        "accounts": [("SD100000001", "checking", 9840.75)],
         "salary": ("Ministry of Education", 11000.00),
         "factors": (1.0, 1.15, 0.9),
         "monthly": [
-            (3, "groceries", "Panda", "Grocery shopping", 420.00),
-            (6, "restaurant", "Al Baik", "Lunch", 85.00),
-            (10, "bills", "Saudi Electricity", "Electricity bill", 310.00),
-            (14, "shopping", "Noon", "Electronics", 260.00),
-            (18, "health", "Nahdi Pharmacy", "Medicine", 140.00),
-            (24, "restaurant", "Starbucks", "Coffee", 38.00),
+            (3, "groceries", "Al Waha Supermarket", "Grocery shopping", 420.00),
+            (6, "restaurant", "Al Basha Restaurant", "Lunch", 85.00),
+            (10, "bills", "Sudanese Electricity Distribution Co.", "Electricity bill", 310.00),
+            (14, "shopping", "Khartoum Online Store", "Electronics", 260.00),
+            (18, "health", "Al Shifa Pharmacy", "Medicine", 140.00),
+            (24, "restaurant", "Ozone Cafe", "Coffee", 38.00),
         ],
     },
     {
         "name": "Khalid", "email": "khalid@example.com", "active": True, "gender": "male",
         "accounts": [
-            ("SA100000002", "checking", 15320.40),
-            ("SA100000003", "savings", 48000.00),
+            ("SD100000002", "checking", 15320.40),
+            ("SD100000003", "savings", 48000.00),
         ],
-        "salary": ("Saudi Aramco", 18500.00),
+        "salary": ("Sudapet", 18500.00),
         "factors": (1.1, 0.95, 1.25),
         "monthly": [
             (2, "transfer", "Savings Account", "Transfer to savings", 3000.00),
-            (4, "groceries", "Carrefour", "Grocery shopping", 650.00),
-            (8, "transport", "SASCO", "Fuel", 280.00),
-            (12, "entertainment", "VOX Cinemas", "Movie tickets", 160.00),
-            (16, "bills", "STC", "Mobile and internet bill", 399.00),
-            (21, "restaurant", "Miramar Restaurant", "Family dinner", 540.00),
+            (4, "groceries", "Afra Hypermarket", "Grocery shopping", 650.00),
+            (8, "transport", "Nile Petroleum Station", "Fuel", 280.00),
+            (12, "entertainment", "Al Waha Cinema", "Movie tickets", 160.00),
+            (16, "bills", "Zain Sudan", "Mobile and internet bill", 399.00),
+            (21, "restaurant", "Nile View Restaurant", "Family dinner", 540.00),
         ],
         # Monthly credit into the savings account (account index 1)
         "savings_deposit": (2, "transfer", "Checking Account", "Deposit from checking", 3000.00),
     },
     {
         "name": "Noura", "email": "noura@example.com", "active": True, "gender": "female",
-        "accounts": [("SA100000004", "checking", 6210.30)],
-        "salary": ("King Faisal Specialist Hospital", 13500.00),
+        "accounts": [("SD100000004", "checking", 6210.30)],
+        "salary": ("Ibn Sina Hospital", 13500.00),
         "factors": (0.9, 1.3, 1.1),
         "monthly": [
             (5, "restaurant", "Layali Restaurant", "Dinner", 320.00),
-            (9, "shopping", "Zara", "Clothes", 890.00),
-            (13, "restaurant", "Dunkin", "Coffee and donuts", 65.00),
-            (17, "shopping", "Sephora", "Cosmetics", 450.00),
-            (22, "groceries", "Tamimi Markets", "Grocery shopping", 380.00),
-            (26, "restaurant", "Herfy", "Fast food", 55.00),
+            (9, "shopping", "Afra Mall Fashion", "Clothes", 890.00),
+            (13, "restaurant", "Sweet Corner Cafe", "Coffee and donuts", 65.00),
+            (17, "shopping", "Beauty Corner", "Cosmetics", 450.00),
+            (22, "groceries", "Souq Al Arabi Grocery", "Grocery shopping", 380.00),
+            (26, "restaurant", "Kebab Express", "Fast food", 55.00),
         ],
     },
     {
         "name": "Abdullah", "email": "abdullah@example.com", "active": True, "gender": "male",
-        "accounts": [("SA100000005", "checking", 7455.00)],
-        "salary": ("SABIC", 12800.00),
+        "accounts": [("SD100000005", "checking", 7455.00)],
+        "salary": ("Kenana Sugar Company", 12800.00),
         "factors": (1.0, 1.05, 1.2),
         "monthly": [
-            (3, "bills", "Saudi Electricity", "Electricity bill", 520.00),
-            (5, "bills", "National Water Company", "Water bill", 180.00),
-            (7, "transport", "Uber", "Ride", 75.00),
-            (11, "transport", "SASCO", "Fuel", 300.00),
-            (15, "bills", "Mobily", "Mobile bill", 230.00),
-            (20, "groceries", "Othaim Markets", "Grocery shopping", 480.00),
+            (3, "bills", "Sudanese Electricity Distribution Co.", "Electricity bill", 520.00),
+            (5, "bills", "Khartoum State Water Corporation", "Water bill", 180.00),
+            (7, "transport", "Tirhal", "Ride", 75.00),
+            (11, "transport", "Nile Petroleum Station", "Fuel", 300.00),
+            (15, "bills", "MTN Sudan", "Mobile bill", 230.00),
+            (20, "groceries", "Bahri Central Market", "Grocery shopping", 480.00),
         ],
     },
     {
         "name": "Reem", "email": "reem@example.com", "active": True, "gender": "female",
-        "accounts": [("SA100000006", "checking", 845.20)],
+        "accounts": [("SD100000006", "checking", 845.20)],
         "salary": ("Startup Company", 6500.00),
         "factors": (1.2, 1.0, 1.15),
         "monthly": [
             (4, "bills", "Apartment Rent", "Monthly rent", 2500.00),
-            (8, "groceries", "Lulu Hypermarket", "Grocery shopping", 350.00),
-            (12, "transport", "Careem", "Ride", 60.00),
+            (8, "groceries", "Omdurman Grand Market", "Grocery shopping", 350.00),
+            (12, "transport", "Tirhal", "Ride", 60.00),
             (16, "entertainment", "Netflix", "Monthly subscription", 45.00),
-            (23, "restaurant", "Kudu", "Fast food", 42.00),
+            (23, "restaurant", "Tasty Burger", "Fast food", 42.00),
         ],
     },
     {
         "name": "Fahad", "email": "fahad@example.com", "active": True, "gender": "male",
-        "accounts": [("SA100000007", "checking", 86400.00)],
-        "salary": ("Fahad Trading Group", 35000.00),
+        "accounts": [("SD100000007", "checking", 86400.00)],
+        "salary": ("Al Fahad Trading Group", 35000.00),
         "factors": (1.0, 1.4, 0.8),
         "monthly": [
-            (2, "shopping", "Jarir Bookstore", "Laptop", 4200.00),
-            (6, "restaurant", "Nozomi", "Business dinner", 1150.00),
-            (10, "entertainment", "Saudia Airlines", "Flight tickets", 3600.00),
-            (15, "groceries", "Danube", "Grocery shopping", 980.00),
-            (19, "health", "Dr. Sulaiman Al Habib Hospital", "Medical checkup", 750.00),
+            (2, "shopping", "Al Dar Al Sudania Bookstore", "Laptop", 4200.00),
+            (6, "restaurant", "Corinthia Hotel Restaurant", "Business dinner", 1150.00),
+            (10, "entertainment", "Tarco Airlines", "Flight tickets", 3600.00),
+            (15, "groceries", "Kafouri Supermarket", "Grocery shopping", 980.00),
+            (19, "health", "Royal Care Hospital", "Medical checkup", 750.00),
             (25, "transport", "Car Service Center", "Car maintenance", 1400.00),
         ],
     },
@@ -599,12 +619,12 @@ DEMO_CUSTOMERS = [
     {
         # Inactive user (tests that inactive accounts cannot log in)
         "name": "Omar", "email": "omar@example.com", "active": False, "gender": "male",
-        "accounts": [("SA100000008", "checking", 3100.00)],
+        "accounts": [("SD100000008", "checking", 3100.00)],
         "salary": ("Construction Company", 7800.00),
         "factors": (1.0, 1.0, 1.0),
         "monthly": [
-            (7, "groceries", "Panda", "Grocery shopping", 300.00),
-            (15, "bills", "STC", "Mobile bill", 150.00),
+            (7, "groceries", "Al Waha Supermarket", "Grocery shopping", 300.00),
+            (15, "bills", "Zain Sudan", "Mobile bill", 150.00),
         ],
     },
 ]
@@ -614,19 +634,19 @@ DEMO_CUSTOMERS = [
 EXTRA_TRANSACTIONS = {
     "mohamed@example.com": [
         ("2026-09-01", "credit", 5000.00, "salary", "Employer", "Monthly salary"),
-        ("2026-09-08", "debit", 210.00, "groceries", "Carrefour", "Grocery shopping"),
-        ("2026-09-15", "debit", 95.00, "restaurant", "Restaurant A", "Dinner"),
+        ("2026-09-08", "debit", 210.00, "groceries", "Afra Hypermarket", "Grocery shopping"),
+        ("2026-09-15", "debit", 95.00, "restaurant", "Al Housh Restaurant", "Dinner"),
         ("2026-10-01", "credit", 5000.00, "salary", "Employer", "Monthly salary"),
-        ("2026-10-06", "debit", 175.00, "groceries", "Carrefour", "Grocery shopping"),
-        ("2026-10-19", "debit", 140.00, "restaurant", "Al Baik", "Lunch"),
+        ("2026-10-06", "debit", 175.00, "groceries", "Afra Hypermarket", "Grocery shopping"),
+        ("2026-10-19", "debit", 140.00, "restaurant", "Al Basha Restaurant", "Lunch"),
     ],
     "ahmed@example.com": [
-        ("2026-09-01", "credit", 8000.00, "salary", "Employer B", "Monthly salary"),
-        ("2026-09-07", "debit", 310.00, "groceries", "Panda", "Grocery shopping"),
-        ("2026-09-20", "debit", 260.00, "restaurant", "Starbucks", "Coffee"),
-        ("2026-10-01", "credit", 8000.00, "salary", "Employer B", "Monthly salary"),
-        ("2026-10-05", "debit", 420.00, "groceries", "Panda", "Grocery shopping"),
-        ("2026-10-14", "debit", 180.00, "transport", "Uber", "Ride"),
+        ("2026-09-01", "credit", 8000.00, "salary", "Telecom Company", "Monthly salary"),
+        ("2026-09-07", "debit", 310.00, "groceries", "Al Waha Supermarket", "Grocery shopping"),
+        ("2026-09-20", "debit", 260.00, "restaurant", "Ozone Cafe", "Coffee"),
+        ("2026-10-01", "credit", 8000.00, "salary", "Telecom Company", "Monthly salary"),
+        ("2026-10-05", "debit", 420.00, "groceries", "Al Waha Supermarket", "Grocery shopping"),
+        ("2026-10-14", "debit", 180.00, "transport", "Tirhal", "Ride"),
     ],
 }
 
@@ -732,9 +752,9 @@ def insert_demo_customers():
                     """
                     INSERT OR IGNORE INTO accounts
                     (user_id, account_number, account_type, balance, currency)
-                    VALUES (?, ?, ?, ?, 'SAR')
+                    VALUES (?, ?, ?, ?, 'SDG')
                     """,
-                    (user_id, number, account_type, balance),
+                    (user_id, number, account_type, round(balance * DEMO_AMOUNT_SCALE, 2)),
                 )
 
                 cursor.execute(
@@ -821,6 +841,7 @@ if __name__ == "__main__":
 
     migrate_users_table()
 
+    convert_demo_data_to_sudan()
     insert_sample_data()
     insert_july_data()
     insert_location_data()

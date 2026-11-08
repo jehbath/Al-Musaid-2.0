@@ -16,6 +16,7 @@ import {
 import AuthModal from "./AuthModal";
 import ConfirmDialog from "./ConfirmDialog";
 import FormattedMessage from "./FormattedMessage";
+import LocationCard from "./LocationCard";
 
 const SpeechRecognition =
   window.SpeechRecognition ||
@@ -34,7 +35,7 @@ const SPEECH_ERROR_MESSAGES = {
 const GUEST_SUGGESTIONS = [
   "ما هي الخدمات المصرفية المتاحة؟",
   "ما الفرق بين الحساب الجاري وحساب التوفير؟",
-  "حوّل 100 دولار إلى ريال سعودي",
+  "حوّل 100 دولار إلى جنيه سوداني",
   "أين أقرب صراف آلي؟",
 ];
 
@@ -344,9 +345,12 @@ function App() {
 
       refreshHistory(userMessage, currentConversationId);
 
-      // Normal response
+      // Normal response (with map cards for branch/ATM results)
       if (result?.response) {
-        addAssistantMessage(result.response);
+        addAssistantMessage(
+          result.response,
+          result.locations?.length ? { locations: result.locations } : {}
+        );
       } else {
         addAssistantMessage(
           "عذرًا، لم أتمكن من الحصول على رد مناسب."
@@ -952,6 +956,10 @@ function App() {
                     ) : (
                       item.text
                     )}
+
+                    {item.locations?.map((location, index) => (
+                      <LocationCard key={index} location={location} />
+                    ))}
 
                     {item.loginRequired && !currentUser && (
                       <button

@@ -1,10 +1,6 @@
 # Virtual environment
 .venv/
 
-# Environment variables / API keys
-.env
-.env.*
-
 # Python cache
 __pycache__/
 *.py[cod]
@@ -21,10 +17,10 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Drafts
-.draft/
-
 # Node / React
 node_modules/
 dist/
 
+# API keys
+.env
+.env.*

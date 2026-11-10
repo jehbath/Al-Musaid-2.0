@@ -1,3 +1,10 @@
+import sys
+
+# Arabic text in log output must not crash the server on Windows consoles
+# that default to a non-UTF-8 code page.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field

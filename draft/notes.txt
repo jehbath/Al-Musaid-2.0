@@ -32,6 +32,10 @@ the need to extract the information from the history
 
 
 Run the code via: uvicorn main:app --reload (it goes to main.py then app and finally run the fastAPI)
+<<<<<<< HEAD
+maltbot: cd frontend -> npm run dev
+=======
 maltbot: cd frontend -> npm run dev
 
 python -m database.test 
+>>>>>>> origin/main

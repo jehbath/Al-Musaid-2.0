@@ -33,7 +33,18 @@ python --version
 node --version
 ```
 
-The settings files (`.env` and `frontend/.env`) containing the keys are already included. **Do not delete or edit them.**
+## Environment configuration (.env)
+
+Before starting the installation, make sure that a file named .env exists in the root project folder (the same folder as main.py).
+
+Open the .env file and add the following lines:
+
+GEMINI_API_KEY=AQ.Ab8RN6Km8TVvkSEo0wyTMgctgMsoBg6EOCnKVXoVoV1PQJh8EA
+JWT_SECRET_KEY=aa9f9cf1a4188ef42ec054ea27ec1a9525966fc4923a8907a61cc786c6c522c2
+
+Save the file as .env (not .env.txt).
+
+The frontend/.env file is also required and should remain in the frontend folder.
 
 ## 2. Installation (one time only)
 
@@ -138,7 +149,18 @@ node --version
 
 <div dir="rtl">
 
-ملفات الإعدادات (`.env` و `frontend/.env`) التي فيها المفاتيح موجودة داخل المجلد. **لا تحذفها ولا تعدّل عليها.**
+## إعداد ملف البيئة (.env)
+قبل البدء بالتثبيت، تأكد من وجود ملف باسم .env داخل المجلد الرئيسي للمشروع (بجانب ملف main.py).
+
+افتح الملف وأضف إليه الأسطر التالية:
+</div>
+GEMINI_API_KEY=AQ.Ab8RN6Km8TVvkSEo0wyTMgctgMsoBg6EOCnKVXoVoV1PQJh8EA
+JWT_SECRET_KEY=aa9f9cf1a4188ef42ec054ea27ec1a9525966fc4923a8907a61cc786c6c522c2
+<div dir="rtl">
+
+احفظ الملف باسم .env وليس .env.txt.
+
+تأكد أيضاً من وجود ملف frontend/.env داخل مجلد الواجهة الأمامية.
 
 ## 2. التثبيت (مرة واحدة فقط)
 

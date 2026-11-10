@@ -39,7 +39,7 @@ Before starting the installation, make sure that a file named .env exists in the
 
 Open the .env file and add the following lines:
 
-GEMINI_API_KEY=AQ.Ab8RN6Km8TVvkSEo0wyTMgctgMsoBg6EOCnKVXoVoV1PQJh8EA
+GEMINI_API_KEY= THE_KEY_WILL_BE_FOUND_IN_THE_PROJECT_EMAIL
 JWT_SECRET_KEY=aa9f9cf1a4188ef42ec054ea27ec1a9525966fc4923a8907a61cc786c6c522c2
 
 Save the file as .env (not .env.txt).
@@ -154,7 +154,7 @@ node --version
 
 افتح الملف وأضف إليه الأسطر التالية:
 </div>
-GEMINI_API_KEY=AQ.Ab8RN6Km8TVvkSEo0wyTMgctgMsoBg6EOCnKVXoVoV1PQJh8EA
+GEMINI_API_KEY= المفتاح موجود في البريد المرسل من قبل طلاب المشروع
 JWT_SECRET_KEY=aa9f9cf1a4188ef42ec054ea27ec1a9525966fc4923a8907a61cc786c6c522c2
 <div dir="rtl">
 
